@@ -24,7 +24,7 @@ sealed class AppContext : ApplicationContext
         _service = new BluetoothService();
         _store   = new AutoForgetStore();
         _engine  = new AutoForgetEngine(_service, _store);
-        _form    = new MainForm(_service, _store);
+        _form    = new MainForm(_service, _store, _engine);
 
         _tray = new NotifyIcon
         {
