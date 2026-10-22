@@ -1,0 +1,15 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio / IDE files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Discovery CSV output (optional to track or ignore, keeping local history clean)
+*.log
