@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0-windows10.0.19041.0 unlocks WinRT APIs (Bluetooth, Radio, etc.) in Milestone 2+ -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>WinExe</OutputType>          <!-- No console window at all -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>BluetoothRectifier</AssemblyName>
+    <RootNamespace>BluetoothRectifier</RootNamespace>
+    <!-- Produces a single self-contained exe when you run: dotnet publish -r win-x64 -p:PublishSingleFile=true -->
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+
+</Project>
