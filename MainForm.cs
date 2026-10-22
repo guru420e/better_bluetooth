@@ -24,6 +24,8 @@ public sealed class MainForm : Form
     // ── Dependencies ───────────────────────────────────────────────────────
     private readonly BluetoothService _service;
     private readonly AutoForgetStore  _store;
+    private readonly AutoForgetEngine _engine;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _countdownRemaining = new(StringComparer.OrdinalIgnoreCase);
 
     // ── Design tokens ──────────────────────────────────────────────────────
     private static readonly Color C_Bg        = Color.FromArgb(0x14, 0x16, 0x1A);
@@ -78,10 +80,11 @@ public sealed class MainForm : Form
     private Point _dragOriginScreen;
     private bool  _forceClose;
 
-    public MainForm(BluetoothService service, AutoForgetStore store)
+    public MainForm(BluetoothService service, AutoForgetStore store, AutoForgetEngine engine)
     {
         _service = service;
         _store   = store;
+        _engine  = engine;
 
         FormBorderStyle = FormBorderStyle.None;
         BackColor       = C_Bg;
@@ -102,6 +105,32 @@ public sealed class MainForm : Form
         _service.EnumerationCompleted += OnEnumerationCompleted;
         _service.StatusMessage        += OnStatusMessage;
         _store.Changed                += () => { _chipPanel?.Invalidate(); ScheduleRefresh(); };
+
+        // ── Auto-Forget Engine Events ───────────────────────────────────────────
+        _engine.GraceCountdownTick += (mac, remaining) =>
+        {
+            _countdownRemaining[AutoForgetStore.NormalizeMac(mac)] = remaining;
+            ScheduleRefresh();
+        };
+
+        _engine.GraceCountdownCancelled += mac =>
+        {
+            _countdownRemaining.TryRemove(AutoForgetStore.NormalizeMac(mac), out _);
+            ScheduleRefresh();
+        };
+
+        _engine.DeviceAutoForgotten += (dev, reason) =>
+        {
+            _countdownRemaining.TryRemove(AutoForgetStore.NormalizeMac(dev.MacFormatted), out _);
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() =>
+                {
+                    _statusLabel.Text = $"Auto-forgot {dev.Name}. Hold sync to pair next time.";
+                    ScheduleRefresh();
+                });
+            }
+        };
 
         _throttleTimer = new System.Windows.Forms.Timer { Interval = 150 };
         _throttleTimer.Tick += (_, _) =>
@@ -631,9 +660,16 @@ public sealed class MainForm : Form
         var card = MakeCardPanel();
         string icon = GetDeviceEmoji(dev);
 
+        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
         string subText;
         Color subColor;
-        if (dev.IsConnected)
+
+        if (_countdownRemaining.TryGetValue(normMac, out int secondsLeft))
+        {
+            subText = $"⏳ Forgetting in {secondsLeft}s...";
+            subColor = Color.FromArgb(0xFF, 0xB8, 0x6C); // Vibrant amber warning
+        }
+        else if (dev.IsConnected)
         {
             subText = "● Connected";
             subColor = C_Connected;
@@ -695,7 +731,11 @@ public sealed class MainForm : Form
 
             if (nowOn)
             {
-                _statusLabel.Text = $"Auto-forget enabled for {dev.Name}.";
+                _statusLabel.Text = "Note: Auto-forget means you must pair again next time.";
+            }
+            else
+            {
+                _statusLabel.Text = $"Auto-forget disabled for {dev.Name}.";
             }
         };
         card.Controls.Add(toggle);
