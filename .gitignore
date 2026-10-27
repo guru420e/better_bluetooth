@@ -13,3 +13,6 @@ obj/
 
 # Discovery CSV output (optional to track or ignore, keeping local history clean)
 *.log
+discovery.csv
+app_ui.jpg
+
