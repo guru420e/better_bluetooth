@@ -6,16 +6,18 @@ using BetterBluetooth.UI.Theme;
 namespace BetterBluetooth.UI.Components;
 
 /// <summary>
-/// Top header panel (440x84) containing the title, status label, scan toggle button,
-/// and borderless window dragging support.
+/// Top header panel (440x84) containing the title, status label, rules gear button,
+/// scan toggle button, and borderless window dragging support.
 /// </summary>
 public sealed class HeaderPanel : Panel
 {
-    private readonly Label _titleLabel;
-    private readonly Label _statusLabel;
+    private readonly Label  _titleLabel;
+    private readonly Label  _statusLabel;
+    private readonly Button _rulesBtn;
     private readonly Button _scanBtn;
 
     public event Action? ScanClicked;
+    public event Action? SettingsClicked;
     public event Action<Point>? DragWindowMoved;
 
     private bool  _dragging;
@@ -29,8 +31,8 @@ public sealed class HeaderPanel : Panel
 
         _titleLabel = new Label
         {
-            Text      = "Bluetooth",
-            Font      = AppTheme.FontTitle,
+            Text      = "Better Bluetooth",
+            Font      = new Font("Segoe UI", 16f, FontStyle.Bold),
             ForeColor = AppTheme.TextPrim,
             BackColor = AppTheme.Bg,
             AutoSize  = true,
@@ -48,11 +50,15 @@ public sealed class HeaderPanel : Panel
             Location  = new Point(18, 50),
         };
 
+        _rulesBtn = AppTheme.CreateIconButton("⚙", AppTheme.TextSec, w: 36, h: 36);
+        _rulesBtn.Location = new Point(292, 24);
+        _rulesBtn.Click   += (_, _) => SettingsClicked?.Invoke();
+
         _scanBtn = AppTheme.CreateButton("↺  Scan", AppTheme.Teal, AppTheme.TealText, w: 88, h: 36);
         _scanBtn.Location = new Point(336, 24);
         _scanBtn.Click   += (_, _) => ScanClicked?.Invoke();
 
-        Controls.AddRange(new Control[] { _titleLabel, _statusLabel, _scanBtn });
+        Controls.AddRange(new Control[] { _titleLabel, _statusLabel, _rulesBtn, _scanBtn });
 
         WireDrag(this);
         WireDrag(_titleLabel);

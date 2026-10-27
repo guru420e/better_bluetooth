@@ -17,8 +17,8 @@ namespace BetterBluetooth.UI.Forms;
 
 /// <summary>
 /// 440×600 borderless overlay window wired live to BluetoothService and AutoForgetStore.
-/// Features custom-drawn dark scrollbar, ellipsis text truncation, fine-grained card invalidation,
-/// and smooth mouse-wheel navigation.
+/// Features custom-drawn dark scrollbar, full 510px viewport, ellipsis text truncation,
+/// fine-grained card invalidation, and smooth mouse-wheel navigation.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -33,7 +33,6 @@ public sealed class MainForm : Form
 
     // ── UI Controls ────────────────────────────────────────────────────────
     private HeaderPanel _header = null!;
-    private FooterPanel _footer = null!;
     private DarkScrollBar _darkScrollBar = null!;
     private Panel _contentPanel = null!;
     private FlowLayoutPanel _innerLayout = null!;
@@ -70,18 +69,7 @@ public sealed class MainForm : Form
         _service.DeviceRemoved        += _ => ScheduleRefresh();
         _service.EnumerationCompleted += OnEnumerationCompleted;
         _service.StatusMessage        += OnStatusMessage;
-        _store.Changed += () =>
-        {
-            if (_footer != null)
-            {
-                if (_footer.AutoForgetEnabled != _store.MasterAutoForget)
-                    _footer.AutoForgetEnabled = _store.MasterAutoForget;
-                if (_footer.AutoPairEnabled != _store.MasterAutoPair)
-                    _footer.AutoPairEnabled = _store.MasterAutoPair;
-            }
-            _chipPanel?.Invalidate();
-            ScheduleRefresh();
-        };
+        _store.Changed                += () => { _chipPanel?.Invalidate(); ScheduleRefresh(); };
 
         // ── Auto-Forget Engine Events ───────────────────────────────────────────
         _engine.GraceCountdownTick += (mac, remaining) =>
@@ -245,15 +233,16 @@ public sealed class MainForm : Form
         SuspendLayout();
 
         _header = new HeaderPanel();
-        _header.ScanClicked += ToggleScan;
+        _header.ScanClicked     += ToggleScan;
+        _header.SettingsClicked += ShowAutoForgetListDialog;
         _header.DragWindowMoved += delta => Location = new Point(Location.X + delta.X, Location.Y + delta.Y);
         Controls.Add(_header);
 
-        // ── Scrollable middle content viewport ──────────────────────────────
+        // ── Scrollable middle content viewport (expanded to 510px without footer) ─
         _contentPanel = new Panel
         {
             Location   = new Point(0, 84),
-            Size       = new Size(432, 436),
+            Size       = new Size(432, 510),
             BackColor  = AppTheme.Bg,
             AutoScroll = false,
         };
@@ -268,7 +257,7 @@ public sealed class MainForm : Form
             WrapContents  = false,
             BackColor     = AppTheme.Bg,
             Margin        = Padding.Empty,
-            Padding       = new Padding(16, 6, 0, 10),
+            Padding       = new Padding(16, 6, 0, 14),
         };
 
         // 1. NEARBY SECTION
@@ -305,11 +294,11 @@ public sealed class MainForm : Form
         AppTheme.EnableDoubleBuffer(_nearbyFlow);
         AppTheme.EnableDoubleBuffer(_myDevicesFlow);
 
-        // ── Custom Dark Scrollbar ───────────────────────────────────────────
+        // ── Custom Dark Scrollbar (expanded to 502px) ───────────────────────
         _darkScrollBar = new DarkScrollBar
         {
             Location = new Point(433, 88),
-            Size     = new Size(5, 428),
+            Size     = new Size(5, 502),
         };
         _darkScrollBar.ScrollChanged += offset =>
         {
@@ -317,14 +306,6 @@ public sealed class MainForm : Form
         };
         Controls.Add(_darkScrollBar);
         _darkScrollBar.BringToFront();
-
-        // ── Footer Panel ───────────────────────────────────────────────────
-        _footer = new FooterPanel();
-        _footer.AutoForgetEnabled = _store.MasterAutoForget;
-        _footer.AutoPairEnabled   = _store.MasterAutoPair;
-        _footer.AutoForgetChanged += enabled => _store.MasterAutoForget = enabled;
-        _footer.AutoPairChanged   += enabled => _store.MasterAutoPair   = enabled;
-        Controls.Add(_footer);
 
         ResumeLayout(false);
     }
@@ -335,13 +316,11 @@ public sealed class MainForm : Form
         {
             _service.StopScan();
             _header.SetScanning(false);
-            _footer.SetStatusText("Idle");
         }
         else
         {
             _service.StartScan();
             _header.SetScanning(true);
-            _footer.SetStatusText("Scanning...");
         }
     }
 
@@ -392,7 +371,7 @@ public sealed class MainForm : Form
             using var pen  = new Pen(AppTheme.Border, 1f);
             g.DrawPath(pen, path);
 
-            string text = $"≡×  Rules · {_store.Count}";
+            string text = $"⚙  Rules · {_store.Count}";
             TextRenderer.DrawText(g, text, AppTheme.FontChip, _chipPanel.ClientRectangle, AppTheme.Teal,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         };
@@ -471,11 +450,7 @@ public sealed class MainForm : Form
             _nearbyFlow.Controls.Clear();
             foreach (var dev in nearby)
             {
-                _nearbyFlow.Controls.Add(DeviceCard.CreateNearbyCard(
-                    dev,
-                    _store,
-                    _service.PairDeviceAsync,
-                    msg => _header.SetStatusText(msg)));
+                _nearbyFlow.Controls.Add(DeviceCard.CreateNearbyCard(dev, _service.PairDeviceAsync));
             }
             _nearbyFlow.ResumeLayout(true);
         }
@@ -540,8 +515,7 @@ public sealed class MainForm : Form
                     _service.UnpairDeviceAsync,
                     _service.PairDeviceAsync,
                     mac => _countdownRemaining.TryGetValue(mac, out int s) ? s : null,
-                    () => _chipPanel.Invalidate(),
-                    msg => _header.SetStatusText(msg)));
+                    ShowAutoForgetListDialog));
             }
             _myDevicesFlow.ResumeLayout(true);
         }
@@ -572,7 +546,6 @@ public sealed class MainForm : Form
         }
 
         _header.SetStatusText("Live discovery active");
-        _footer.SetStatusText("Scanning (live)");
     }
 
     private void OnStatusMessage(string msg)
@@ -583,7 +556,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        _footer.SetStatusText(msg);
+        _header.SetStatusText(msg);
     }
 
     protected override void Dispose(bool disposing)

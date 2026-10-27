@@ -20,9 +20,7 @@ public static class DeviceCard
 {
     public static Panel CreateNearbyCard(
         BluetoothDeviceInfo dev,
-        AutoForgetStore store,
-        Func<string, Task<DevicePairingResultStatus>> onPairRequested,
-        Action<string> onStatusNotification)
+        Func<string, Task<DevicePairingResultStatus>> onPairRequested)
     {
         var card = CreateBaseCardPanel();
         card.Tag = dev;
@@ -35,37 +33,6 @@ public static class DeviceCard
             PaintNearbyText(e.Graphics, icon, cur.Name, sub);
         };
 
-        // 1. Auto-Pair toggle button (X=262, W=34, H=34)
-        bool autoPairOn = store.IsAutoPair(dev.Mac);
-        var autoPairBtn = new Button
-        {
-            Text      = "⚡",
-            Font      = AppTheme.FontBtn,
-            Size      = new Size(34, 34),
-            Location  = new Point(262, 17),
-            BackColor = autoPairOn ? AppTheme.Teal : AppTheme.CardBg,
-            ForeColor = autoPairOn ? AppTheme.TealText : AppTheme.TextSec,
-            FlatStyle = FlatStyle.Flat,
-            Cursor    = Cursors.Hand,
-            UseVisualStyleBackColor = false,
-        };
-        autoPairBtn.FlatAppearance.BorderSize  = 1;
-        autoPairBtn.FlatAppearance.BorderColor = autoPairOn ? AppTheme.Teal : AppTheme.Border;
-        autoPairBtn.Click += (_, _) =>
-        {
-            bool nowOn = store.ToggleAutoPair(dev.Mac);
-            autoPairBtn.BackColor = nowOn ? AppTheme.Teal : AppTheme.CardBg;
-            autoPairBtn.ForeColor = nowOn ? AppTheme.TealText : AppTheme.TextSec;
-            autoPairBtn.FlatAppearance.BorderColor = nowOn ? AppTheme.Teal : AppTheme.Border;
-
-            if (nowOn)
-                onStatusNotification($"Auto-pair enabled for {dev.Name}. Will pair automatically when detected!");
-            else
-                onStatusNotification($"Auto-pair disabled for {dev.Name}.");
-        };
-        card.Controls.Add(autoPairBtn);
-
-        // 2. Connect button (X=302, W=86, H=34)
         var btn = AppTheme.CreateButton("Connect", AppTheme.Teal, AppTheme.TealText, w: 86, h: 34);
         btn.Location = new Point(302, 17);
         btn.Click += async (_, _) =>
@@ -92,8 +59,7 @@ public static class DeviceCard
         Func<string, Task> onUnpairRequested,
         Func<string, Task<DevicePairingResultStatus>> onPairRequested,
         Func<string, int?> getCountdownRemaining,
-        Action onStoreChanged,
-        Action<string> onStatusNotification)
+        Action onOpenRulesRequested)
     {
         var card = CreateBaseCardPanel();
         card.Tag = dev;
@@ -128,10 +94,14 @@ public static class DeviceCard
                 subColor = AppTheme.SecLabel;
             }
 
-            PaintMyDeviceText(e.Graphics, icon, cur.Name, subText, subColor);
+            bool hasRules = store.Contains(normMac) || store.IsAutoPair(normMac);
+            PaintMyDeviceText(e.Graphics, icon, cur.Name, subText, subColor, hasRules);
         };
 
-        // 1. Trash / Remove button (X=354, W=34)
+        // Clicking the card opens the rules manager for this device
+        card.DoubleClick += (_, _) => onOpenRulesRequested();
+
+        // 1. Trash / Remove button (X=354, W=34, H=34)
         var trash = AppTheme.CreateIconButton(text: "🗑", fg: AppTheme.Danger, w: 34, h: 34);
         trash.Location = new Point(354, 17);
         trash.Click += async (_, _) =>
@@ -147,42 +117,11 @@ public static class DeviceCard
         };
         card.Controls.Add(trash);
 
-        // 2. Auto-forget toggle button (X=314, W=34)
-        bool autoForgetOn = store.Contains(dev.Mac);
-        var toggle = new Button
-        {
-            Text      = "≡×",
-            Font      = AppTheme.FontBtn,
-            Size      = new Size(34, 34),
-            Location  = new Point(314, 17),
-            BackColor = autoForgetOn ? AppTheme.Teal : AppTheme.CardBg,
-            ForeColor = autoForgetOn ? AppTheme.TealText : AppTheme.TextSec,
-            FlatStyle = FlatStyle.Flat,
-            Cursor    = Cursors.Hand,
-            UseVisualStyleBackColor = false,
-        };
-        toggle.FlatAppearance.BorderSize  = 1;
-        toggle.FlatAppearance.BorderColor = autoForgetOn ? AppTheme.Teal : AppTheme.Border;
-        toggle.Click += (_, _) =>
-        {
-            bool nowOn = store.Toggle(dev.Mac);
-            toggle.BackColor = nowOn ? AppTheme.Teal : AppTheme.CardBg;
-            toggle.ForeColor = nowOn ? AppTheme.TealText : AppTheme.TextSec;
-            toggle.FlatAppearance.BorderColor = nowOn ? AppTheme.Teal : AppTheme.Border;
-            onStoreChanged();
-
-            if (nowOn)
-                onStatusNotification($"Auto-fix active for {dev.Name}: will auto-forget on disconnect & auto-pair when discoverable.");
-            else
-                onStatusNotification($"Auto-fix disabled for {dev.Name}.");
-        };
-        card.Controls.Add(toggle);
-
-        // 3. Connect / Disconnect button
+        // 2. Connect / Disconnect button (X=260, W=86, H=34)
         if (dev.IsConnected)
         {
-            var disc = AppTheme.CreateButton("Disconnect", AppTheme.BtnGray, AppTheme.TextPrim, w: 96, h: 34);
-            disc.Location = new Point(210, 17);
+            var disc = AppTheme.CreateButton("Disconnect", AppTheme.BtnGray, AppTheme.TextPrim, w: 86, h: 34);
+            disc.Location = new Point(260, 17);
             disc.Click += (_, _) =>
             {
                 MessageBox.Show(card.FindForm(),
@@ -194,7 +133,7 @@ public static class DeviceCard
         else
         {
             var conn = AppTheme.CreateButton("Connect", AppTheme.Teal, AppTheme.TealText, w: 86, h: 34);
-            conn.Location = new Point(220, 17);
+            conn.Location = new Point(260, 17);
             conn.Click += async (_, _) =>
             {
                 var form = card.FindForm();
@@ -260,30 +199,47 @@ public static class DeviceCard
 
         g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 18f));
 
-        // Auto-pair button starts at 262, so width of 204 leaves 8px gap
+        // Connect button starts at 302, so width of 244 leaves 8px gap
         TextRenderer.DrawText(g, name, AppTheme.FontDevName,
-            new Rectangle(50, 12, 204, 22), AppTheme.TextPrim,
+            new Rectangle(50, 12, 244, 22), AppTheme.TextPrim,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
         TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
-            new Rectangle(50, 36, 204, 20), AppTheme.TextSec,
+            new Rectangle(50, 36, 244, 20), AppTheme.TextSec,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
     }
 
-    private static void PaintMyDeviceText(Graphics g, string icon, string name, string sub, Color subColor)
+    private static void PaintMyDeviceText(Graphics g, string icon, string name, string sub, Color subColor, bool hasRules)
     {
         g.SmoothingMode     = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
         g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 18f));
 
-        // Buttons start at 210, so width of 152 leaves 8px gap before buttons
+        // Name
+        int nameWidth = hasRules ? 144 : 200;
         TextRenderer.DrawText(g, name, AppTheme.FontDevName,
-            new Rectangle(50, 12, 152, 22), AppTheme.TextPrim,
+            new Rectangle(50, 12, nameWidth, 22), AppTheme.TextPrim,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
+        // If rules are configured, show a subtle teal badge [⚡ Auto]
+        if (hasRules)
+        {
+            var badgeRect = new Rectangle(198, 14, 54, 18);
+            using var badgePath = AppTheme.RoundedPath(badgeRect, 4);
+            using var badgeBrush = new SolidBrush(Color.FromArgb(32, AppTheme.Teal));
+            using var badgePen   = new Pen(Color.FromArgb(120, AppTheme.Teal), 1f);
+            g.FillPath(badgeBrush, badgePath);
+            g.DrawPath(badgePen, badgePath);
+
+            TextRenderer.DrawText(g, "⚡ Auto", new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                badgeRect, AppTheme.Teal,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
+        // Subtext (● Connected, ⏳ Forgetting in 12s..., etc.)
         TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
-            new Rectangle(50, 36, 152, 20), subColor,
+            new Rectangle(50, 36, 202, 20), subColor,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
     }
 }

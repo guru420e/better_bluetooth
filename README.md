@@ -28,18 +28,21 @@ When you turn off the controller or reboot your PC:
   - **Safety Blackouts**: Auto-forget will *never* fire if the device was not actively connected in the current session, if Bluetooth radio was toggled off, or during system sleep/wake transitions.
 - **Hands-Free Auto-Pair Engine (`⚡`)**:
   - Automatically pairs with discoverable devices as soon as they are detected in pairing mode.
-  - Users can toggle Auto-Pair with the `⚡` button on any Nearby device card, or manage rules directly from the flyout.
+  - Easily enable Auto-Pair for any device in the centralized Rules Manager Dialog.
   - Completes the entire autonomous cycle: **Disconnect -> Auto-Forget -> Hold Sync -> Auto-Pair -> Connected**.
-- **Two-Tier Control (Per-Device & Master Circuit Breaker)**:
-  - **Per-Device (`≡×` and `⚡`)**: Select exactly which devices should be automatically forgotten on disconnect and automatically paired on discovery.
-  - **Master Switch**: Toggle *"Fix stale pairings automatically"* in the footer to pause or resume the entire engine globally with full disk persistence.
+- **Two-Tier Control (Centralized Rules Manager & Master Circuit Breakers)**:
+  - **Per-Device Rules**: Select exactly which devices should be automatically forgotten on disconnect and automatically paired on discovery via the sleek **Rules Manager Dialog** (click `⚙` or double-click any device card).
+  - **Master Circuit Breakers**: Master toggles for Auto-Forget and Auto-Pair to pause or resume engines globally with ACID disk persistence in embedded LiteDB.
+- **Embedded ACID Database (LiteDB)**:
+  - Device automation rules and global settings are persisted safely in an embedded LiteDB database (`%APPDATA%\BetterBluetooth\better_bluetooth.db`), guaranteeing atomic, crash-proof transactions without corrupted JSON files.
 - **Live HCI Inquiry Rediscovery**:
   - Classic Bluetooth devices in pairing mode do not advertise like BLE; they enter "Inquiry Scan". The app restarts WinRT inquiry sweeps on demand to instantly pick up devices holding their sync button.
 - **Sleek Windows 11 Dark Overlay**:
   - Borderless 440×600 flyout window anchored directly above the system tray.
   - Windows 11 rounded corners via Desktop Window Manager (`DwmSetWindowAttribute`).
+  - **Streamlined Edge-to-Edge Layout**: Footer panel removed to maximize vertical card space (510px viewport).
   - **Custom 5px Dark Scrollbar**: Completely replaces legacy OS white scrollbars with a custom-rendered dark thumb matching `#14161A`.
-  - **Zero-Blink Countdown UI**: Double-buffered fine-grained repainting (`ctrl.Invalidate()`) updates countdown timers without redrawing controls or flickering.
+  - **Zero-Blink Repainting**: Double-buffered fine-grained repainting (`ctrl.Invalidate()`) updates countdown timers and active badges smoothly without flickering.
 - **Global Hotkey & Tray Integration**:
   - Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> from anywhere to toggle the overlay.
   - Runs silently in the system tray with a custom teal geometric Bluetooth rune icon and native Windows balloon notifications on auto-forget and auto-pair.
@@ -57,16 +60,18 @@ The automation operates through an event-driven pipeline coordinated across thre
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. UI Layer (MainForm.cs / DeviceCard.cs)                       │
-│    • User enables Auto-Forget (≡×) / Auto-Pair (⚡) on card     │
-│    • User toggles master switch: "Fix stale pairings auto..."   │
+│ 1. UI Layer (MainForm.cs / RulesManagerDialog.cs)               │
+│    • User configures per-device rules via Header ⚙ or chip      │
+│    • Double-click any device card to edit its automation rules  │
+│    • Master circuit breakers for Auto-Forget & Auto-Pair        │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Dispatches state changes
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 2. Storage Layer (AutoForgetStore.cs)                           │
-│    • Persists state to %APPDATA%\BetterBluetooth\autoforget     │
-│    • Thread-safe JSON store with backward-compatible format     │
+│ 2. Storage Layer (DatabaseContext.cs & AutoForgetStore.cs)      │
+│    • Embedded LiteDB: %APPDATA%\BetterBluetooth\better_bluet... │
+│    • Thread-safe ACID collections: device_rules & settings      │
+│    • Automatic migration from legacy json stores                │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Fires Changed event
                                ▼
@@ -79,22 +84,25 @@ The automation operates through an event-driven pipeline coordinated across thre
 ```
 
 ### Two-Tier Control Hierarchy
-1. **Per-Device Toggle (`≡×` and `⚡` buttons on device cards)**:
-   - When active, the device's MAC address is registered in `AutoForgetStore` for auto-forgetting on disconnect and/or auto-pairing on discovery.
-2. **Master Auto-Fix Switch (Checkbox in footer)**:
-   - Serves as a global safety circuit breaker.
-   - When unchecked, running countdowns are instantly cancelled and all automatic unpairing and pairing are paused across all devices.
-   - The setting is saved to disk so it stays preserved across application restarts.
+1. **Per-Device Rules Dialog (`⚙` Header Icon, Chip, or Double-Click Card)**:
+   - Configure **Auto-unpair on disconnect** and **Auto-pair on discovery** per device. Devices with active rules display a subtle `[⚡ Auto]` teal badge.
+2. **Master Circuit Breakers**:
+   - Master switches in the Rules Manager allow instantly pausing all auto-unpairing or auto-pairing across all devices while preserving individual device configurations.
+   - All rules and settings are persisted transactionally in embedded LiteDB.
 
 ---
 
 ## 🏗 System Architecture
 
-The application is modularized into three decoupled layers:
+The application is modularized into decoupled layers:
 
 ```
 better_bluetooth/
 ├── Core/                              # Core domain and hardware integration
+│   ├── Database/
+│   │   ├── AppSettingsRecord.cs       # Master toggles & autostart document
+│   │   ├── DatabaseContext.cs         # Thread-safe LiteDB context & migrations
+│   │   └── DeviceRuleRecord.cs        # Per-device automation rules document
 │   ├── Interop/
 │   │   └── NativeMethods.cs           # Win32 P/Invoke (DWM corners, Hotkey, Console streams)
 │   ├── Models/
@@ -102,18 +110,18 @@ better_bluetooth/
 │   └── Services/
 │       ├── BluetoothService.cs        # WinRT DeviceWatcher (Classic AQS: {e0cbf06c-cd8b-4647-bb8a-263b43f0f974})
 │       ├── AutoForgetEngine.cs        # Disconnect tracker, grace timer, session verification & unpairing
-│       ├── AutoForgetStore.cs         # Thread-safe persistent JSON store (%APPDATA%\autoforget.json)
+│       ├── AutoForgetStore.cs         # In-memory cached facade over LiteDB
 │       └── StartupManager.cs          # Windows registry autostart manager (HKCU\...\Run)
 ├── UI/                                # Graphical user interface (WinForms .NET 8)
 │   ├── Theme/
 │   │   └── AppTheme.cs                # Design tokens (#14161A, #3DD6B0), fonts, button factories
 │   ├── Components/
 │   │   ├── DarkScrollBar.cs           # Custom 5px dark scrollbar control with mouse dragging
-│   │   ├── HeaderPanel.cs             # Drag-enabled header, live status, and scan toggle button
-│   │   ├── FooterPanel.cs             # Bottom divider, status bar & auto-fix checkbox
-│   │   └── DeviceCard.cs              # Double-buffered device card with ellipsis text & toggle
+│   │   ├── HeaderPanel.cs             # Drag header, live status, scan toggle, and ⚙ settings button
+│   │   └── DeviceCard.cs              # Double-buffered card with badge, connect/disconnect, and trash
 │   ├── Forms/
-│   │   └── MainForm.cs                # Clean orchestrator form managing layout & events
+│   │   ├── MainForm.cs                # Borderless main flyout managing full 510px viewport & events
+│   │   └── RulesManagerDialog.cs      # Centered modal for managing per-device and master rules
 │   └── Tray/
 │       └── AppContext.cs              # ApplicationContext, tray icon drawing & balloon notifications
 ├── CLI/                               # Interactive command-line test runners
@@ -121,7 +129,7 @@ better_bluetooth/
 │   └── AutoForgetTestRunner.cs        # Disconnect & grace countdown test (--autoforget-test)
 ├── Program.cs                         # Application entry point with CLI / GUI mode routing
 ├── publish.bat                        # 1-click single-file release build script
-└── BetterBluetooth.csproj             # Target net8.0-windows10.0.19041.0
+└── BetterBluetooth.csproj             # Target net8.0-windows10.0.19041.0 + LiteDB
 ```
 
 ---
@@ -152,9 +160,9 @@ dotnet run
 ```
 
 - Click the tray icon or press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to open the flyout.
-- Click the **`≡×`** button on any paired device card to enable **Auto-Forget**.
-- Click the **`⚡`** button on any nearby device card to enable **Auto-Pair**.
-- Check **"Fix stale pairings automatically"** in the footer to toggle the master engine.
+- Click the **`⚙`** button in the header or the **`⚙ Rules`** chip to open the **Rules Manager Dialog**.
+- Configure **Auto-unpair on disconnect** or **Auto-pair on discovery** per device with instant LiteDB persistence.
+- Devices with active automation display an **`[⚡ Auto]`** teal badge; double-clicking any device card opens its rules directly.
 - Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
 - To exit, right-click the tray icon and choose **Exit**.
 
