@@ -24,9 +24,14 @@ When you turn off the controller or reboot your PC:
   - Automatically unpairs problematic devices when they disconnect, leaving Windows clean and ready for instant re-pairing next time.
   - **Grace Period (20 seconds)**: Configurable grace countdown before unpairing triggers, preventing accidental disconnects during transient signal drops.
   - **Live Cancellation**: If the device reconnects or the user cancels during the countdown, the unpair event is instantly aborted.
+  - **Startup Crash Recovery**: If the PC or app crashes during an active disconnect or before unpairing finishes, the engine inspects paired devices on next launch and automatically purges leftover stale bonds.
   - **Safety Blackouts**: Auto-forget will *never* fire if the device was not actively connected in the current session, if Bluetooth radio was toggled off, or during system sleep/wake transitions.
+- **Hands-Free Auto-Pair Engine (`⚡`)**:
+  - Automatically pairs with discoverable devices as soon as they are detected in pairing mode.
+  - Users can toggle Auto-Pair with the `⚡` button on any Nearby device card, or manage rules directly from the flyout.
+  - Completes the entire autonomous cycle: **Disconnect -> Auto-Forget -> Hold Sync -> Auto-Pair -> Connected**.
 - **Two-Tier Control (Per-Device & Master Circuit Breaker)**:
-  - **Per-Device (`≡×`)**: Select exactly which devices should be automatically forgotten.
+  - **Per-Device (`≡×` and `⚡`)**: Select exactly which devices should be automatically forgotten on disconnect and automatically paired on discovery.
   - **Master Switch**: Toggle *"Fix stale pairings automatically"* in the footer to pause or resume the entire engine globally with full disk persistence.
 - **Live HCI Inquiry Rediscovery**:
   - Classic Bluetooth devices in pairing mode do not advertise like BLE; they enter "Inquiry Scan". The app restarts WinRT inquiry sweeps on demand to instantly pick up devices holding their sync button.

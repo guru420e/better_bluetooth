@@ -20,7 +20,9 @@ public static class DeviceCard
 {
     public static Panel CreateNearbyCard(
         BluetoothDeviceInfo dev,
-        Func<string, Task<DevicePairingResultStatus>> onPairRequested)
+        AutoForgetStore store,
+        Func<string, Task<DevicePairingResultStatus>> onPairRequested,
+        Action<string> onStatusNotification)
     {
         var card = CreateBaseCardPanel();
         card.Tag = dev;
@@ -33,6 +35,37 @@ public static class DeviceCard
             PaintNearbyText(e.Graphics, icon, cur.Name, sub);
         };
 
+        // 1. Auto-Pair toggle button (X=262, W=34, H=34)
+        bool autoPairOn = store.IsAutoPair(dev.Mac);
+        var autoPairBtn = new Button
+        {
+            Text      = "⚡",
+            Font      = AppTheme.FontBtn,
+            Size      = new Size(34, 34),
+            Location  = new Point(262, 17),
+            BackColor = autoPairOn ? AppTheme.Teal : AppTheme.CardBg,
+            ForeColor = autoPairOn ? AppTheme.TealText : AppTheme.TextSec,
+            FlatStyle = FlatStyle.Flat,
+            Cursor    = Cursors.Hand,
+            UseVisualStyleBackColor = false,
+        };
+        autoPairBtn.FlatAppearance.BorderSize  = 1;
+        autoPairBtn.FlatAppearance.BorderColor = autoPairOn ? AppTheme.Teal : AppTheme.Border;
+        autoPairBtn.Click += (_, _) =>
+        {
+            bool nowOn = store.ToggleAutoPair(dev.Mac);
+            autoPairBtn.BackColor = nowOn ? AppTheme.Teal : AppTheme.CardBg;
+            autoPairBtn.ForeColor = nowOn ? AppTheme.TealText : AppTheme.TextSec;
+            autoPairBtn.FlatAppearance.BorderColor = nowOn ? AppTheme.Teal : AppTheme.Border;
+
+            if (nowOn)
+                onStatusNotification($"Auto-pair enabled for {dev.Name}. Will pair automatically when detected!");
+            else
+                onStatusNotification($"Auto-pair disabled for {dev.Name}.");
+        };
+        card.Controls.Add(autoPairBtn);
+
+        // 2. Connect button (X=302, W=86, H=34)
         var btn = AppTheme.CreateButton("Connect", AppTheme.Teal, AppTheme.TealText, w: 86, h: 34);
         btn.Location = new Point(302, 17);
         btn.Click += async (_, _) =>
@@ -139,9 +172,9 @@ public static class DeviceCard
             onStoreChanged();
 
             if (nowOn)
-                onStatusNotification("Note: Auto-forget means you must pair again next time.");
+                onStatusNotification($"Auto-fix active for {dev.Name}: will auto-forget on disconnect & auto-pair when discoverable.");
             else
-                onStatusNotification($"Auto-forget disabled for {dev.Name}.");
+                onStatusNotification($"Auto-fix disabled for {dev.Name}.");
         };
         card.Controls.Add(toggle);
 
@@ -227,13 +260,13 @@ public static class DeviceCard
 
         g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 18f));
 
-        // Connect button starts at 302, so width of 244 leaves 8px gap
+        // Auto-pair button starts at 262, so width of 204 leaves 8px gap
         TextRenderer.DrawText(g, name, AppTheme.FontDevName,
-            new Rectangle(50, 12, 244, 22), AppTheme.TextPrim,
+            new Rectangle(50, 12, 204, 22), AppTheme.TextPrim,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
         TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
-            new Rectangle(50, 36, 244, 20), AppTheme.TextSec,
+            new Rectangle(50, 36, 204, 20), AppTheme.TextSec,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
     }
 

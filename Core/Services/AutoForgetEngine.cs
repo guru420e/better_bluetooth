@@ -16,9 +16,10 @@ using Timer = System.Threading.Timer;
 namespace BluetoothRectifier.Core.Services;
 
 /// <summary>
-/// Event-driven Auto-Forget engine.
-/// Monitors devices registered in AutoForgetStore and unpairs them when they disconnect,
-/// provided all safety conditions (session connection, grace period, radio on, sleep guard) are met.
+/// Event-driven Auto-Forget & Auto-Pair engine.
+/// - Unpairs registered devices when they disconnect after a grace period.
+/// - Automatically cleans up stale pairings left over from crashes on startup.
+/// - Automatically pairs discoverable devices marked for Auto-Pair.
 /// </summary>
 public sealed class AutoForgetEngine : IDisposable
 {
@@ -29,6 +30,7 @@ public sealed class AutoForgetEngine : IDisposable
 
     // ── Events ─────────────────────────────────────────────────────────────
     public event Action<BluetoothDeviceInfo, string>? DeviceAutoForgotten;
+    public event Action<BluetoothDeviceInfo>?         DeviceAutoPaired;
     public event Action<string, int>?                 GraceCountdownTick;      // (mac, secondsRemaining)
     public event Action<string>?                      GraceCountdownCancelled; // (mac)
     public event Action<string>?                      StatusMessage;
@@ -40,6 +42,7 @@ public sealed class AutoForgetEngine : IDisposable
     // ── Device State Tracking ──────────────────────────────────────────────
     private readonly ConcurrentDictionary<string, bool> _connectedInSession = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, (DateTime Expiration, BluetoothDeviceInfo Device)> _pendingForgets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, bool> _pendingAutoPairs = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, BluetoothDevice> _activeBtDevices = new(StringComparer.OrdinalIgnoreCase);
 
     // ── Timers & Guards ────────────────────────────────────────────────────
@@ -69,14 +72,16 @@ public sealed class AutoForgetEngine : IDisposable
 
         _engineStartedTime = DateTime.UtcNow;
 
-        _service.DeviceDiscovered += OnDeviceDiscovered;
-        _service.DeviceUpdated    += OnDeviceUpdated;
-        _service.DeviceRemoved    += OnDeviceRemoved;
+        _service.DeviceDiscovered     += OnDeviceDiscovered;
+        _service.DeviceUpdated        += OnDeviceUpdated;
+        _service.DeviceRemoved        += OnDeviceRemoved;
+        _service.EnumerationCompleted += OnEnumerationCompleted;
 
         _ = InitRadioAsync();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
-        _graceTimer     = new Timer(OnGraceTimerTick, null, 1000, 1000);
+        _graceTimer = new Timer(OnGraceTimerTick, null, 1000, 1000);
+
         _store.Changed += () =>
         {
             if (!_store.AutoFixEnabled)
@@ -147,6 +152,38 @@ public sealed class AutoForgetEngine : IDisposable
         return true;
     }
 
+    // ── Startup Crash Recovery ─────────────────────────────────────────────
+
+    private async void OnEnumerationCompleted()
+    {
+        await CheckAndCleanupStalePairingsAsync();
+    }
+
+    public async Task CheckAndCleanupStalePairingsAsync()
+    {
+        if (!_store.AutoFixEnabled || _isPaused || !_isRadioOn)
+            return;
+
+        var devices = _service.Devices;
+        foreach (var dev in devices)
+        {
+            string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
+            if (normMac == "54:46:6E:55:74:01") continue; // Protected MAC safeguard
+
+            // If a device is paired, but NOT connected, and is on the Auto-Forget list:
+            // this is a stale leftover bond from a crash or interrupted session!
+            if (dev.IsPaired && !dev.IsConnected && _store.Contains(normMac))
+            {
+                StatusMessage?.Invoke($"[Crash Recovery] Stale pairing found for {dev.Name} ({dev.MacFormatted}). Cleaning up...");
+                var result = await _service.UnpairDeviceAsync(dev.Id);
+                if (result == DeviceUnpairingResultStatus.Unpaired || result == DeviceUnpairingResultStatus.AlreadyUnpaired)
+                {
+                    DeviceAutoForgotten?.Invoke(dev, "Startup crash recovery: cleaned stale bond from interrupted session");
+                }
+            }
+        }
+    }
+
     // ── Device Event Handling ──────────────────────────────────────────────
 
     private void OnDeviceDiscovered(BluetoothDeviceInfo dev) => ProcessDeviceState(dev);
@@ -162,6 +199,17 @@ public sealed class AutoForgetEngine : IDisposable
     {
         string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
 
+        // A. NEARBY / UNPAIRED DEVICE -> Check for Auto-Pair
+        if (!dev.IsPaired)
+        {
+            if (_store.AutoFixEnabled && _store.IsAutoPair(normMac))
+            {
+                _ = TryAutoPairDeviceAsync(dev);
+            }
+            return;
+        }
+
+        // B. PAIRED DEVICE -> Check Auto-Forget rules
         if (!_store.Contains(normMac))
         {
             if (_pendingForgets.TryRemove(normMac, out _))
@@ -209,6 +257,37 @@ public sealed class AutoForgetEngine : IDisposable
         }
     }
 
+    private async Task TryAutoPairDeviceAsync(BluetoothDeviceInfo dev)
+    {
+        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
+        if (normMac == "54:46:6E:55:74:01") return; // Safety guard
+        if (!_pendingAutoPairs.TryAdd(normMac, true)) return;
+
+        try
+        {
+            StatusMessage?.Invoke($"[Auto-Pair] Discoverable device {dev.Name} ({dev.MacFormatted}) found. Pairing automatically...");
+            var result = await _service.PairDeviceAsync(dev.Id);
+            if (result == DevicePairingResultStatus.Paired || result == DevicePairingResultStatus.AlreadyPaired)
+            {
+                StatusMessage?.Invoke($"✔ [Auto-Pair] Successfully paired with {dev.Name}!");
+                DeviceAutoPaired?.Invoke(dev);
+            }
+            else
+            {
+                StatusMessage?.Invoke($"✖ [Auto-Pair] Auto-pairing {dev.Name} returned: {result}");
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage?.Invoke($"[Auto-Pair Error] {ex.Message}");
+        }
+        finally
+        {
+            // Delay removing from pending so we don't spam pair calls if inquiry triggers multiple updates
+            _ = Task.Delay(10000).ContinueWith(t => _pendingAutoPairs.TryRemove(normMac, out _));
+        }
+    }
+
     private async Task HookNativeConnectionStatusAsync(BluetoothDeviceInfo dev)
     {
         string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
@@ -230,24 +309,21 @@ public sealed class AutoForgetEngine : IDisposable
                 };
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            StatusMessage?.Invoke($"Failed native connection hook for {dev.Name}: {ex.Message}");
+        }
     }
 
-    // ── 1-Second Grace Timer Tick ──────────────────────────────────────────
+    // ── Grace Period Timer Tick ────────────────────────────────────────────
 
     private void OnGraceTimerTick(object? state)
     {
-        if (!AreSafeguardsPassing())
-        {
-            if (!_isRadioOn)
-            {
-                CancelAllPendingCountdowns("Bluetooth radio turned off");
-            }
-            return;
-        }
+        if (_pendingForgets.IsEmpty) return;
 
         var now = DateTime.UtcNow;
-        foreach (var kvp in _pendingForgets.ToList())
+
+        foreach (var kvp in _pendingForgets)
         {
             string mac = kvp.Key;
             var (expiration, dev) = kvp.Value;
@@ -260,72 +336,82 @@ public sealed class AutoForgetEngine : IDisposable
             }
             else
             {
-                _pendingForgets.TryRemove(mac, out _);
-                _ = ExecuteAutoForgetAsync(dev);
+                if (_pendingForgets.TryRemove(mac, out _))
+                {
+                    _ = ExecuteAutoForgetAsync(dev);
+                }
             }
         }
     }
 
     private async Task ExecuteAutoForgetAsync(BluetoothDeviceInfo dev)
     {
-        string mac = dev.MacFormatted;
-        StatusMessage?.Invoke($"[Auto-Forget] Grace period expired for {dev.Name} ({mac}). Unpairing...");
+        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
 
-        var result = await _service.UnpairDeviceAsync(dev.Id);
-        string reason = $"Auto-forget executed after disconnect > {GracePeriodSeconds}s (Result: {result})";
+        if (normMac == "54:46:6E:55:74:01")
+        {
+            StatusMessage?.Invoke($"[Blocked] Security rule: target MAC {normMac} is protected.");
+            return;
+        }
 
-        _connectedInSession.TryRemove(AutoForgetStore.NormalizeMac(mac), out _);
+        if (!AreSafeguardsPassing())
+        {
+            StatusMessage?.Invoke($"[Safeguard] Aborting auto-forget for {dev.Name}: safeguard conditions failed.");
+            return;
+        }
 
-        LogAuditToCsv(dev, reason);
+        StatusMessage?.Invoke($"[Auto-Forget] Executing automatic unpair for \"{dev.Name}\" ({dev.MacFormatted})...");
 
-        DeviceAutoForgotten?.Invoke(dev, reason);
-        StatusMessage?.Invoke($"[Auto-Forget] {dev.Name} ({mac}) successfully unpaired.");
+        try
+        {
+            var result = await _service.UnpairDeviceAsync(dev.Id);
+
+            if (result == DeviceUnpairingResultStatus.Unpaired || result == DeviceUnpairingResultStatus.AlreadyUnpaired)
+            {
+                StatusMessage?.Invoke($"✔ [Auto-Forget] Cleanly unpaired \"{dev.Name}\" from Windows.");
+                DeviceAutoForgotten?.Invoke(dev, "Disconnect grace period expired");
+            }
+            else
+            {
+                StatusMessage?.Invoke($"✖ [Auto-Forget] Failed to unpair \"{dev.Name}\": {result}");
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage?.Invoke($"[Auto-Forget Error] {ex.Message}");
+        }
+        finally
+        {
+            _connectedInSession.TryRemove(normMac, out _);
+            if (_activeBtDevices.TryRemove(normMac, out var btDev))
+            {
+                try { btDev.Dispose(); } catch { }
+            }
+        }
     }
 
-    // ── 30-Second Backup Heartbeat ─────────────────────────────────────────
+    public void CancelAllPendingCountdowns(string reason)
+    {
+        var keys = _pendingForgets.Keys.ToList();
+        foreach (var k in keys)
+        {
+            if (_pendingForgets.TryRemove(k, out _))
+            {
+                GraceCountdownCancelled?.Invoke(k);
+            }
+        }
+        if (keys.Count > 0)
+        {
+            StatusMessage?.Invoke($"Cancelled all pending auto-forgets: {reason}");
+        }
+    }
 
     private void OnHeartbeatTick(object? state)
     {
-        if (_store.Count == 0 || !AreSafeguardsPassing())
-            return;
-
-        foreach (string mac in _store.MacAddresses)
+        if (!_pendingForgets.IsEmpty)
         {
-            var dev = _service.FindByMac(mac);
-            if (dev != null)
-            {
-                ProcessDeviceState(dev);
-            }
+            StatusMessage?.Invoke($"[Heartbeat] Active pending auto-forgets: {_pendingForgets.Count}");
         }
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────
-
-    private void CancelAllPendingCountdowns(string reason)
-    {
-        foreach (var mac in _pendingForgets.Keys.ToList())
-        {
-            if (_pendingForgets.TryRemove(mac, out _))
-            {
-                GraceCountdownCancelled?.Invoke(mac);
-                StatusMessage?.Invoke($"Cancelled countdown for {mac}: {reason}");
-            }
-        }
-    }
-
-    private void LogAuditToCsv(BluetoothDeviceInfo dev, string reason)
-    {
-        try
-        {
-            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss},AUTO-FORGET," +
-                       $"\"{dev.Name.Replace("\"", "\"\"")}\"," +
-                       $"{dev.MacFormatted},{dev.IsPaired},{dev.IsConnected}," +
-                       $"{(dev.Rssi.HasValue ? dev.Rssi.Value.ToString() : "")}," +
-                       $"\"{reason.Replace("\"", "\"\"")}\"\r\n";
-
-            _service.LogRawLine(line);
-        }
-        catch { }
     }
 
     public void Dispose()
@@ -333,10 +419,14 @@ public sealed class AutoForgetEngine : IDisposable
         _graceTimer.Dispose();
         _heartbeatTimer.Dispose();
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _service.DeviceDiscovered     -= OnDeviceDiscovered;
+        _service.DeviceUpdated        -= OnDeviceUpdated;
+        _service.DeviceRemoved        -= OnDeviceRemoved;
+        _service.EnumerationCompleted -= OnEnumerationCompleted;
 
-        foreach (var dev in _activeBtDevices.Values)
+        foreach (var kvp in _activeBtDevices)
         {
-            try { dev.Dispose(); } catch { }
+            try { kvp.Value.Dispose(); } catch { }
         }
         _activeBtDevices.Clear();
     }

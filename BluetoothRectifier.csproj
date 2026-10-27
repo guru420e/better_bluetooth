@@ -12,6 +12,7 @@
     <RootNamespace>BluetoothRectifier</RootNamespace>
     <!-- Produces a single self-contained exe when you run: dotnet publish -r win-x64 -p:PublishSingleFile=true -->
     <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>

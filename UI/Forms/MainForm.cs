@@ -116,6 +116,18 @@ public sealed class MainForm : Form
             }
         };
 
+        _engine.DeviceAutoPaired += dev =>
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() =>
+                {
+                    _header.SetStatusText($"Auto-paired with {dev.Name}!");
+                    ScheduleRefresh();
+                });
+            }
+        };
+
         _throttleTimer = new System.Windows.Forms.Timer { Interval = 150 };
         _throttleTimer.Tick += (_, _) =>
         {
@@ -454,7 +466,11 @@ public sealed class MainForm : Form
             _nearbyFlow.Controls.Clear();
             foreach (var dev in nearby)
             {
-                _nearbyFlow.Controls.Add(DeviceCard.CreateNearbyCard(dev, _service.PairDeviceAsync));
+                _nearbyFlow.Controls.Add(DeviceCard.CreateNearbyCard(
+                    dev,
+                    _store,
+                    _service.PairDeviceAsync,
+                    msg => _header.SetStatusText(msg)));
             }
             _nearbyFlow.ResumeLayout(true);
         }
@@ -536,25 +552,33 @@ public sealed class MainForm : Form
 
     private void ShowAutoForgetListDialog()
     {
-        var list = _store.MacAddresses;
+        var forgetList = _store.MacAddresses;
+        var pairList   = _store.AutoPairMacAddresses;
+
+        var allMacs = forgetList.Union(pairList, StringComparer.OrdinalIgnoreCase).ToList();
         string msg;
-        if (list.Count == 0)
+        if (allMacs.Count == 0)
         {
-            msg = "The auto-forget list is currently empty.\n\n" +
-                  "Toggle the (≡×) button on any paired device to automatically unpair it when it disconnects.";
+            msg = "No devices currently configured for Auto-Fix.\n\n" +
+                  "• Toggle (≡×) on any paired device to automatically unpair it when it disconnects.\n" +
+                  "• Toggle (⚡) on any nearby device to automatically pair it when discoverable.";
         }
         else
         {
-            msg = $"Devices on the Auto-forget list ({list.Count}):\n\n" +
-                  string.Join("\n", list.Select(mac =>
+            msg = $"Automated Bluetooth Rules ({allMacs.Count} devices):\n\n" +
+                  string.Join("\n\n", allMacs.Select(mac =>
                   {
                       var dev = _service.FindByMac(mac);
-                      return dev != null ? $"• {dev.Name} ({mac})" : $"• {mac}";
+                      string name = dev != null ? dev.Name : mac;
+                      bool af = _store.Contains(mac);
+                      bool ap = _store.IsAutoPair(mac);
+                      string tags = $"[{(af ? "Auto-Forget: ON" : "Auto-Forget: OFF")}, {(ap ? "Auto-Pair: ON" : "Auto-Pair: OFF")}]";
+                      return $"• {name} ({mac})\n  {tags}";
                   })) +
-                  "\n\nNote: Devices with auto-forget enabled will be forgotten after disconnect and grace period.";
+                  "\n\nNote: Auto-forget and Auto-pair work seamlessly together to keep your controller reconnecting without Windows bond corruption.";
         }
 
-        MessageBox.Show(this, msg, "Auto-forget List", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(this, msg, "Auto-Fix Rules", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     // ── Service Event Handlers ─────────────────────────────────────────────

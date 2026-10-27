@@ -59,6 +59,18 @@ public sealed class AppContext : ApplicationContext
             }
             catch { }
         };
+
+        // Auto-pair notification via tray balloon tip
+        _engine.DeviceAutoPaired += dev =>
+        {
+            try
+            {
+                _tray.ShowBalloonTip(4000, "Device Auto-Paired",
+                    $"Successfully auto-paired with \"{dev.Name}\". Ready to use!",
+                    ToolTipIcon.Info);
+            }
+            catch { }
+        };
     }
 
     // ── Toggle ─────────────────────────────────────────────────────────────
