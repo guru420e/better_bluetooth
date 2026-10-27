@@ -23,8 +23,11 @@ When you turn off the controller or reboot your PC:
 - **Automated Event-Driven Auto-Forget Engine**:
   - Automatically unpairs problematic devices when they disconnect, leaving Windows clean and ready for instant re-pairing next time.
   - **Grace Period (20 seconds)**: Configurable grace countdown before unpairing triggers, preventing accidental disconnects during transient signal drops.
-  - **Cancellation Safeguards**: If the device reconnects during the countdown, the unpair event is instantly cancelled.
+  - **Live Cancellation**: If the device reconnects or the user cancels during the countdown, the unpair event is instantly aborted.
   - **Safety Blackouts**: Auto-forget will *never* fire if the device was not actively connected in the current session, if Bluetooth radio was toggled off, or during system sleep/wake transitions.
+- **Two-Tier Control (Per-Device & Master Circuit Breaker)**:
+  - **Per-Device (`≡×`)**: Select exactly which devices should be automatically forgotten.
+  - **Master Switch**: Toggle *"Fix stale pairings automatically"* in the footer to pause or resume the entire engine globally with full disk persistence.
 - **Live HCI Inquiry Rediscovery**:
   - Classic Bluetooth devices in pairing mode do not advertise like BLE; they enter "Inquiry Scan". The app restarts WinRT inquiry sweeps on demand to instantly pick up devices holding their sync button.
 - **Sleek Windows 11 Dark Overlay**:
@@ -35,10 +38,49 @@ When you turn off the controller or reboot your PC:
 - **Global Hotkey & Tray Integration**:
   - Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> from anywhere to toggle the overlay.
   - Runs silently in the system tray with a custom teal geometric Bluetooth rune icon and native Windows balloon notifications on auto-forget.
+  - **Start with Windows**: Toggle autostart on login via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` directly from the tray context menu.
 - **Audit Logging**:
   - Dual CSV audit logs written to `%APPDATA%\BluetoothRectifier\discovery.csv` and `./discovery.csv` tracking timestamped phases, MACs, RSSI levels, and pairing transitions.
 - **Interactive CLI Testing Harness**:
   - Built-in command-line test suites for discovery, pairing sequences, and disconnect verification.
+
+---
+
+## ⚙️ How Auto-Forget Works
+
+Auto-Forget operates through an event-driven pipeline coordinated across three distinct layers:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. UI Layer (MainForm.cs / DeviceCard.cs)                       │
+│    • User enables Auto-Forget on a card (≡×)                     │
+│    • User toggles master switch: "Fix stale pairings auto..."   │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ Dispatches state changes
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. Storage Layer (AutoForgetStore.cs)                           │
+│    • Persists state to %APPDATA%\BluetoothRectifier\autoforget  │
+│    • Thread-safe JSON store with backward-compatible format     │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ Fires Changed event
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. Enforcement Engine (AutoForgetEngine.cs)                     │
+│    • Detects disconnect of an in-session connected device       │
+│    • Evaluates master switch & safeguards                       │
+│    • Starts 20s countdown (live UI updates on card badge)       │
+│    • Unpairs device via WinRT & issues balloon tip notification │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Two-Tier Control Hierarchy
+1. **Per-Device Toggle (`≡×` button on device cards)**:
+   - When active (teal `≡×`), the device's MAC address is registered in `AutoForgetStore`.
+2. **Master Auto-Fix Switch (Checkbox in footer)**:
+   - Serves as a global safety circuit breaker.
+   - When unchecked, running countdowns are instantly cancelled and all automatic unpairing is paused across all devices.
+   - The setting is saved to disk so it stays preserved across application restarts.
 
 ---
 
@@ -56,7 +98,8 @@ bluetooth_rectifier/
 │   └── Services/
 │       ├── BluetoothService.cs        # WinRT DeviceWatcher (Classic AQS: {e0cbf06c-cd8b-4647-bb8a-263b43f0f974})
 │       ├── AutoForgetEngine.cs        # Disconnect tracker, grace timer, session verification & unpairing
-│       └── AutoForgetStore.cs         # Thread-safe persistent JSON store (%APPDATA%\autoforget.json)
+│       ├── AutoForgetStore.cs         # Thread-safe persistent JSON store (%APPDATA%\autoforget.json)
+│       └── StartupManager.cs          # Windows registry autostart manager (HKCU\...\Run)
 ├── UI/                                # Graphical user interface (WinForms .NET 8)
 │   ├── Theme/
 │   │   └── AppTheme.cs                # Design tokens (#14161A, #3DD6B0), fonts, button factories
@@ -73,6 +116,7 @@ bluetooth_rectifier/
 │   ├── PairingTestRunner.cs           # Step-by-step unpair -> inquiry -> pair test (--pair-test)
 │   └── AutoForgetTestRunner.cs        # Disconnect & grace countdown test (--autoforget-test)
 ├── Program.cs                         # Application entry point with CLI / GUI mode routing
+├── publish.bat                        # 1-click single-file release build script
 └── BluetoothRectifier.csproj          # Target net8.0-windows10.0.19041.0
 ```
 
@@ -109,14 +153,18 @@ dotnet run
 - Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
 - To exit, right-click the tray icon and choose **Exit**.
 
-### Single-File Publishing
+### Single-File Standalone Publishing
 
-To build a standalone single-file `.exe` without needing the .NET SDK to run it:
+To produce a self-contained single-file `.exe` that runs on any compatible Windows PC without requiring the .NET SDK:
 
 ```powershell
 ./publish.bat
 ```
-The output executable will be created at `./publish/BluetoothRectifier.exe`.
+
+The output executable is generated at:
+```
+publish\BluetoothRectifier.exe
+```
 
 ---
 
@@ -161,8 +209,18 @@ dotnet run -- --autoforget-test
 
 | File | Description | Location |
 | :--- | :--- | :--- |
-| **`autoforget.json`** | Persistent list of MAC addresses marked for auto-forget | `%APPDATA%\BluetoothRectifier\autoforget.json` |
+| **`autoforget.json`** | Persistent master toggle and MAC address list | `%APPDATA%\BluetoothRectifier\autoforget.json` |
 | **`discovery.csv`** | CSV audit log containing timestamp, phase, MAC, RSSI, and state | `%APPDATA%\BluetoothRectifier\discovery.csv`<br>`.\discovery.csv` |
+
+```json
+// Example %APPDATA%\BluetoothRectifier\autoforget.json:
+{
+  "AutoFixEnabled": true,
+  "MacAddresses": [
+    "D0:56:80:B1:F0:03"
+  ]
+}
+```
 
 ---
 
