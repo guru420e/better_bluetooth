@@ -72,9 +72,12 @@ public sealed class MainForm : Form
         _service.StatusMessage        += OnStatusMessage;
         _store.Changed += () =>
         {
-            if (_footer != null && _footer.AutoFixEnabled != _store.AutoFixEnabled)
+            if (_footer != null)
             {
-                _footer.AutoFixEnabled = _store.AutoFixEnabled;
+                if (_footer.AutoForgetEnabled != _store.MasterAutoForget)
+                    _footer.AutoForgetEnabled = _store.MasterAutoForget;
+                if (_footer.AutoPairEnabled != _store.MasterAutoPair)
+                    _footer.AutoPairEnabled = _store.MasterAutoPair;
             }
             _chipPanel?.Invalidate();
             ScheduleRefresh();
@@ -317,8 +320,10 @@ public sealed class MainForm : Form
 
         // ── Footer Panel ───────────────────────────────────────────────────
         _footer = new FooterPanel();
-        _footer.AutoFixEnabled = _store.AutoFixEnabled;
-        _footer.AutoFixChanged += enabled => _store.AutoFixEnabled = enabled;
+        _footer.AutoForgetEnabled = _store.MasterAutoForget;
+        _footer.AutoPairEnabled   = _store.MasterAutoPair;
+        _footer.AutoForgetChanged += enabled => _store.MasterAutoForget = enabled;
+        _footer.AutoPairChanged   += enabled => _store.MasterAutoPair   = enabled;
         Controls.Add(_footer);
 
         ResumeLayout(false);
@@ -387,7 +392,7 @@ public sealed class MainForm : Form
             using var pen  = new Pen(AppTheme.Border, 1f);
             g.DrawPath(pen, path);
 
-            string text = $"≡×  Auto-forget list · {_store.Count}";
+            string text = $"≡×  Rules · {_store.Count}";
             TextRenderer.DrawText(g, text, AppTheme.FontChip, _chipPanel.ClientRectangle, AppTheme.Teal,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         };
@@ -552,33 +557,8 @@ public sealed class MainForm : Form
 
     private void ShowAutoForgetListDialog()
     {
-        var forgetList = _store.MacAddresses;
-        var pairList   = _store.AutoPairMacAddresses;
-
-        var allMacs = forgetList.Union(pairList, StringComparer.OrdinalIgnoreCase).ToList();
-        string msg;
-        if (allMacs.Count == 0)
-        {
-            msg = "No devices currently configured for Auto-Fix.\n\n" +
-                  "• Toggle (≡×) on any paired device to automatically unpair it when it disconnects.\n" +
-                  "• Toggle (⚡) on any nearby device to automatically pair it when discoverable.";
-        }
-        else
-        {
-            msg = $"Automated Bluetooth Rules ({allMacs.Count} devices):\n\n" +
-                  string.Join("\n\n", allMacs.Select(mac =>
-                  {
-                      var dev = _service.FindByMac(mac);
-                      string name = dev != null ? dev.Name : mac;
-                      bool af = _store.Contains(mac);
-                      bool ap = _store.IsAutoPair(mac);
-                      string tags = $"[{(af ? "Auto-Forget: ON" : "Auto-Forget: OFF")}, {(ap ? "Auto-Pair: ON" : "Auto-Pair: OFF")}]";
-                      return $"• {name} ({mac})\n  {tags}";
-                  })) +
-                  "\n\nNote: Auto-forget and Auto-pair work seamlessly together to keep your controller reconnecting without Windows bond corruption.";
-        }
-
-        MessageBox.Show(this, msg, "Auto-Fix Rules", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        using var dlg = new RulesManagerDialog(_store, _service);
+        dlg.ShowDialog(this);
     }
 
     // ── Service Event Handlers ─────────────────────────────────────────────

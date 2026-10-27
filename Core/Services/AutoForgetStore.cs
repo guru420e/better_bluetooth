@@ -1,278 +1,220 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
+using System.Linq;
+using BetterBluetooth.Core.Database;
 
 namespace BetterBluetooth.Core.Services;
 
 /// <summary>
-/// Persists the list of MAC addresses marked for Auto-Forget, the list of MACs
-/// marked for Auto-Pair, and the global Auto-Fix master toggle.
-/// Saved to %APPDATA%\BetterBluetooth\autoforget.json.
+/// Domain store backed by LiteDB (%APPDATA%\BetterBluetooth\better_bluetooth.db).
+/// Provides true ACID transactional atomicity for device rules and master settings.
 /// </summary>
-public sealed class AutoForgetStore
+public sealed class AutoForgetStore : IDisposable
 {
-    private readonly string _filePath;
-    private readonly HashSet<string> _macs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _autoPairMacs = new(StringComparer.OrdinalIgnoreCase);
-    private bool _autoFixEnabled = true;
+    private readonly DatabaseContext _db;
+    private readonly HashSet<string> _forgetMacs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _pairMacs   = new(StringComparer.OrdinalIgnoreCase);
+    private bool _masterAutoForget = true;
+    private bool _masterAutoPair   = true;
     private readonly object _lock = new();
 
     public event Action? Changed;
 
     public int Count
     {
-        get { lock (_lock) return _macs.Count; }
+        get { lock (_lock) return _forgetMacs.Count; }
     }
 
     public int AutoPairCount
     {
-        get { lock (_lock) return _autoPairMacs.Count; }
+        get { lock (_lock) return _pairMacs.Count; }
     }
 
     public IReadOnlyCollection<string> MacAddresses
     {
-        get { lock (_lock) return new List<string>(_macs); }
+        get { lock (_lock) return new List<string>(_forgetMacs); }
     }
 
     public IReadOnlyCollection<string> AutoPairMacAddresses
     {
-        get { lock (_lock) return new List<string>(_autoPairMacs); }
+        get { lock (_lock) return new List<string>(_pairMacs); }
     }
 
     public bool AutoFixEnabled
     {
-        get { lock (_lock) return _autoFixEnabled; }
+        get => MasterAutoForget;
+        set => MasterAutoForget = value;
+    }
+
+    public bool MasterAutoForget
+    {
+        get { lock (_lock) return _masterAutoForget; }
         set
         {
             lock (_lock)
             {
-                if (_autoFixEnabled == value) return;
-                _autoFixEnabled = value;
-                Save();
+                if (_masterAutoForget == value) return;
+                _masterAutoForget = value;
+                var s = _db.GetSettings();
+                s.MasterAutoForget = value;
+                _db.SaveSettings(s);
             }
             Changed?.Invoke();
         }
     }
 
-    public AutoForgetStore(string? customPath = null)
+    public bool MasterAutoPair
     {
-        if (!string.IsNullOrWhiteSpace(customPath))
+        get { lock (_lock) return _masterAutoPair; }
+        set
         {
-            _filePath = customPath;
+            lock (_lock)
+            {
+                if (_masterAutoPair == value) return;
+                _masterAutoPair = value;
+                var s = _db.GetSettings();
+                s.MasterAutoPair = value;
+                _db.SaveSettings(s);
+            }
+            Changed?.Invoke();
         }
-        else
-        {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var dir = Path.Combine(appData, "BetterBluetooth");
-            Directory.CreateDirectory(dir);
-            _filePath = Path.Combine(dir, "autoforget.json");
-        }
-
-        Load();
     }
 
-    // ── Auto-Forget Management ──────────────────────────────────────────────
+    public AutoForgetStore(string? customDbPath = null)
+    {
+        _db = new DatabaseContext(customDbPath);
+        LoadFromDb();
+    }
+
+    private void LoadFromDb()
+    {
+        lock (_lock)
+        {
+            var s = _db.GetSettings();
+            _masterAutoForget = s.MasterAutoForget;
+            _masterAutoPair   = s.MasterAutoPair;
+
+            _forgetMacs.Clear();
+            _pairMacs.Clear();
+
+            var rules = _db.GetAllRules();
+            foreach (var r in rules)
+            {
+                string norm = NormalizeMac(r.Mac);
+                if (r.AutoForget) _forgetMacs.Add(norm);
+                if (r.AutoPair)   _pairMacs.Add(norm);
+            }
+        }
+    }
+
+    // ── Queries ─────────────────────────────────────────────────────────────
 
     public bool Contains(string mac)
     {
         if (string.IsNullOrWhiteSpace(mac)) return false;
-        lock (_lock) return _macs.Contains(NormalizeMac(mac));
+        lock (_lock) return _forgetMacs.Contains(NormalizeMac(mac));
     }
 
-    public bool Toggle(string mac)
+    public bool IsAutoPair(string mac)
+    {
+        if (string.IsNullOrWhiteSpace(mac)) return false;
+        lock (_lock) return _pairMacs.Contains(NormalizeMac(mac));
+    }
+
+    public List<DeviceRuleRecord> GetAllRules() => _db.GetAllRules();
+
+    public DeviceRuleRecord? GetRule(string mac) => _db.GetRule(mac);
+
+    // ── Mutations ───────────────────────────────────────────────────────────
+
+    public void SetRule(string mac, string name, bool autoForget, bool autoPair)
+    {
+        if (string.IsNullOrWhiteSpace(mac)) return;
+        string norm = NormalizeMac(mac);
+
+        lock (_lock)
+        {
+            if (!autoForget && !autoPair)
+            {
+                _forgetMacs.Remove(norm);
+                _pairMacs.Remove(norm);
+                _db.DeleteRule(norm);
+            }
+            else
+            {
+                if (autoForget) _forgetMacs.Add(norm); else _forgetMacs.Remove(norm);
+                if (autoPair)   _pairMacs.Add(norm);   else _pairMacs.Remove(norm);
+
+                _db.UpsertRule(new DeviceRuleRecord
+                {
+                    Mac        = norm,
+                    Name       = name,
+                    AutoForget = autoForget,
+                    AutoPair   = autoPair
+                });
+            }
+        }
+        Changed?.Invoke();
+    }
+
+    public bool Toggle(string mac, string name = "")
     {
         if (string.IsNullOrWhiteSpace(mac)) return false;
         string norm = NormalizeMac(mac);
         bool nowEnabled;
+
         lock (_lock)
         {
-            if (_macs.Contains(norm))
-            {
-                _macs.Remove(norm);
-                _autoPairMacs.Remove(norm);
-                nowEnabled = false;
-            }
-            else
-            {
-                _macs.Add(norm);
-                _autoPairMacs.Add(norm); // By default, auto-forget also enables auto-pair
-                nowEnabled = true;
-            }
-            Save();
+            var existing = _db.GetRule(norm);
+            nowEnabled = existing == null || !existing.AutoForget;
+
+            SetRule(norm, string.IsNullOrWhiteSpace(name) ? (existing?.Name ?? "") : name,
+                autoForget: nowEnabled,
+                autoPair: nowEnabled); // By default, auto-forget arms auto-pair
         }
-        Changed?.Invoke();
+
         return nowEnabled;
     }
 
-    public void Add(string mac)
+    public bool ToggleAutoPair(string mac, string name = "")
     {
-        if (string.IsNullOrWhiteSpace(mac)) return;
+        if (string.IsNullOrWhiteSpace(mac)) return false;
         string norm = NormalizeMac(mac);
+        bool nowEnabled;
+
         lock (_lock)
         {
-            bool added = _macs.Add(norm);
-            _autoPairMacs.Add(norm);
-            if (added) Save();
+            var existing = _db.GetRule(norm);
+            nowEnabled = existing == null || !existing.AutoPair;
+
+            SetRule(norm, string.IsNullOrWhiteSpace(name) ? (existing?.Name ?? "") : name,
+                autoForget: existing?.AutoForget ?? false,
+                autoPair: nowEnabled);
         }
-        Changed?.Invoke();
+
+        return nowEnabled;
     }
+
+    public void Add(string mac, string name = "") => SetRule(mac, name, autoForget: true, autoPair: true);
 
     public void Remove(string mac)
     {
         if (string.IsNullOrWhiteSpace(mac)) return;
         string norm = NormalizeMac(mac);
+
         lock (_lock)
         {
-            bool removed = _macs.Remove(norm);
-            _autoPairMacs.Remove(norm);
-            if (removed) Save();
+            _forgetMacs.Remove(norm);
+            _pairMacs.Remove(norm);
+            _db.DeleteRule(norm);
         }
         Changed?.Invoke();
     }
 
-    // ── Auto-Pair Management ────────────────────────────────────────────────
+    public static string NormalizeMac(string mac) => DatabaseContext.NormalizeMac(mac);
 
-    public bool IsAutoPair(string mac)
+    public void Dispose()
     {
-        if (string.IsNullOrWhiteSpace(mac)) return false;
-        lock (_lock) return _autoPairMacs.Contains(NormalizeMac(mac));
-    }
-
-    public bool ToggleAutoPair(string mac)
-    {
-        if (string.IsNullOrWhiteSpace(mac)) return false;
-        string norm = NormalizeMac(mac);
-        bool nowEnabled;
-        lock (_lock)
-        {
-            if (_autoPairMacs.Contains(norm))
-            {
-                _autoPairMacs.Remove(norm);
-                nowEnabled = false;
-            }
-            else
-            {
-                _autoPairMacs.Add(norm);
-                nowEnabled = true;
-            }
-            Save();
-        }
-        Changed?.Invoke();
-        return nowEnabled;
-    }
-
-    public void AddAutoPair(string mac)
-    {
-        if (string.IsNullOrWhiteSpace(mac)) return;
-        lock (_lock)
-        {
-            if (_autoPairMacs.Add(NormalizeMac(mac)))
-                Save();
-        }
-        Changed?.Invoke();
-    }
-
-    public void RemoveAutoPair(string mac)
-    {
-        if (string.IsNullOrWhiteSpace(mac)) return;
-        lock (_lock)
-        {
-            if (_autoPairMacs.Remove(NormalizeMac(mac)))
-                Save();
-        }
-        Changed?.Invoke();
-    }
-
-    // ── Persistence ─────────────────────────────────────────────────────────
-
-    private void Load()
-    {
-        lock (_lock)
-        {
-            try
-            {
-                if (File.Exists(_filePath))
-                {
-                    string json = File.ReadAllText(_filePath).Trim();
-                    if (json.StartsWith("["))
-                    {
-                        // Backward compatibility: raw list of strings
-                        var list = JsonSerializer.Deserialize<List<string>>(json);
-                        if (list != null)
-                        {
-                            _macs.Clear();
-                            _autoPairMacs.Clear();
-                            foreach (var m in list)
-                            {
-                                if (!string.IsNullOrWhiteSpace(m))
-                                {
-                                    string norm = NormalizeMac(m);
-                                    _macs.Add(norm);
-                                    _autoPairMacs.Add(norm);
-                                }
-                            }
-                        }
-                    }
-                    else if (json.StartsWith("{"))
-                    {
-                        // Structured store with settings, auto-forget, and auto-pair lists
-                        var doc = JsonSerializer.Deserialize<StoreData>(json);
-                        if (doc != null)
-                        {
-                            _autoFixEnabled = doc.AutoFixEnabled;
-                            _macs.Clear();
-                            _autoPairMacs.Clear();
-
-                            if (doc.MacAddresses != null)
-                            {
-                                foreach (var m in doc.MacAddresses)
-                                {
-                                    if (!string.IsNullOrWhiteSpace(m))
-                                        _macs.Add(NormalizeMac(m));
-                                }
-                            }
-
-                            if (doc.AutoPairMacAddresses != null)
-                            {
-                                foreach (var m in doc.AutoPairMacAddresses)
-                                {
-                                    if (!string.IsNullOrWhiteSpace(m))
-                                        _autoPairMacs.Add(NormalizeMac(m));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch { }
-        }
-    }
-
-    private void Save()
-    {
-        try
-        {
-            var data = new StoreData
-            {
-                AutoFixEnabled       = _autoFixEnabled,
-                MacAddresses         = new List<string>(_macs),
-                AutoPairMacAddresses = new List<string>(_autoPairMacs),
-            };
-
-            string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_filePath, json);
-        }
-        catch { }
-    }
-
-    public static string NormalizeMac(string mac) =>
-        mac.Replace("-", ":").Trim().ToUpperInvariant();
-
-    private sealed class StoreData
-    {
-        public bool AutoFixEnabled { get; set; } = true;
-        public List<string> MacAddresses { get; set; } = new();
-        public List<string> AutoPairMacAddresses { get; set; } = new();
+        _db.Dispose();
     }
 }

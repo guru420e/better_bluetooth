@@ -214,20 +214,13 @@ dotnet run -- --autoforget-test
 
 | File | Description | Location |
 | :--- | :--- | :--- |
-| **`autoforget.json`** | Persistent master toggle and MAC address rules | `%APPDATA%\BetterBluetooth\autoforget.json` |
-| **`discovery.csv`** | CSV audit log containing timestamp, phase, MAC, RSSI, and state | `%APPDATA%\BetterBluetooth\discovery.csv`<br>`.\discovery.csv` |
+| **`better_bluetooth.db`** | ACID-compliant embedded LiteDB database (rules & settings) | `%APPDATA%\BetterBluetooth\better_bluetooth.db` |
+| **`discovery.csv`** | CSV audit log containing timestamp, phase, MAC, RSSI, and state (dev) | `%APPDATA%\BetterBluetooth\discovery.csv`<br>`.\discovery.csv` |
 
 ```json
-// Example %APPDATA%\BetterBluetooth\autoforget.json:
-{
-  "AutoFixEnabled": true,
-  "MacAddresses": [
-    "D0:56:80:B1:F0:03"
-  ],
-  "AutoPairMacAddresses": [
-    "D0:56:80:B1:F0:03"
-  ]
-}
+// Database Collections in %APPDATA%\BetterBluetooth\better_bluetooth.db:
+// 1. device_rules: { "_id": "D0:56:80:B1:F0:03", "Name": "Pro Controller", "AutoForget": true, "AutoPair": true }
+// 2. settings:     { "_id": "global", "MasterAutoForget": true, "MasterAutoPair": true, "StartWithWindows": true }
 ```
 
 ---
