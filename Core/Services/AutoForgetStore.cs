@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace BluetoothRectifier.Core.Services;
+namespace BetterBluetooth.Core.Services;
 
 /// <summary>
 /// Persists the list of MAC addresses marked for Auto-Forget, the list of MACs
 /// marked for Auto-Pair, and the global Auto-Fix master toggle.
-/// Saved to %APPDATA%\BluetoothRectifier\autoforget.json.
+/// Saved to %APPDATA%\BetterBluetooth\autoforget.json.
 /// </summary>
 public sealed class AutoForgetStore
 {
@@ -64,7 +64,7 @@ public sealed class AutoForgetStore
         else
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var dir = Path.Combine(appData, "BluetoothRectifier");
+            var dir = Path.Combine(appData, "BetterBluetooth");
             Directory.CreateDirectory(dir);
             _filePath = Path.Combine(dir, "autoforget.json");
         }

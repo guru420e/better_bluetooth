@@ -6,14 +6,14 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using BluetoothRectifier.Core.Interop;
-using BluetoothRectifier.Core.Models;
-using BluetoothRectifier.Core.Services;
-using BluetoothRectifier.UI.Components;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.Core.Interop;
+using BetterBluetooth.Core.Models;
+using BetterBluetooth.Core.Services;
+using BetterBluetooth.UI.Components;
+using BetterBluetooth.UI.Theme;
 using Panel = System.Windows.Forms.Panel;
 
-namespace BluetoothRectifier.UI.Forms;
+namespace BetterBluetooth.UI.Forms;
 
 /// <summary>
 /// 440×600 borderless overlay window wired live to BluetoothService and AutoForgetStore.

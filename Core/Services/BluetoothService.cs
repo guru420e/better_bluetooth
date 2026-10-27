@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
-using BluetoothRectifier.Core.Models;
+using BetterBluetooth.Core.Models;
 
-namespace BluetoothRectifier.Core.Services;
+namespace BetterBluetooth.Core.Services;
 
 /// <summary>
 /// Bluetooth Classic discovery and device management service.
@@ -57,7 +57,7 @@ public sealed class BluetoothService : IDisposable
     public BluetoothService(string? customCsvPath = null)
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "BluetoothRectifier");
+        var dir = Path.Combine(appData, "BetterBluetooth");
         Directory.CreateDirectory(dir);
         _csvPaths.Add(Path.Combine(dir, "discovery.csv"));
 

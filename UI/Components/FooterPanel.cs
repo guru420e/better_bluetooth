@@ -1,9 +1,9 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.UI.Theme;
 
-namespace BluetoothRectifier.UI.Components;
+namespace BetterBluetooth.UI.Components;
 
 /// <summary>
 /// Bottom footer panel (440x80) displaying the top divider, auto-fix checkbox,

@@ -3,9 +3,9 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Reflection;
 using System.Windows.Forms;
-using BluetoothRectifier.Core.Models;
+using BetterBluetooth.Core.Models;
 
-namespace BluetoothRectifier.UI.Theme;
+namespace BetterBluetooth.UI.Theme;
 
 /// <summary>
 /// Central theme colors, fonts, drawing utilities, and button factories

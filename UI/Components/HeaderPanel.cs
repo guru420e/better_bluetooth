@@ -1,9 +1,9 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.UI.Theme;
 
-namespace BluetoothRectifier.UI.Components;
+namespace BetterBluetooth.UI.Components;
 
 /// <summary>
 /// Top header panel (440x84) containing the title, status label, scan toggle button,

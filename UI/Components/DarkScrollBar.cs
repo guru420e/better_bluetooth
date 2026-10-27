@@ -2,9 +2,9 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.UI.Theme;
 
-namespace BluetoothRectifier.UI.Components;
+namespace BetterBluetooth.UI.Components;
 
 /// <summary>
 /// A slim, custom-drawn 5px dark scrollbar control that blends seamlessly into

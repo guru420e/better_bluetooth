@@ -3,10 +3,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
-using BluetoothRectifier.Core.Models;
-using BluetoothRectifier.Core.Services;
+using BetterBluetooth.Core.Models;
+using BetterBluetooth.Core.Services;
 
-namespace BluetoothRectifier.CLI;
+namespace BetterBluetooth.CLI;
 
 /// <summary>
 /// Interactive Milestone 3 Test Harness:

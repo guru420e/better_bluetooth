@@ -4,12 +4,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
-using BluetoothRectifier.CLI;
-using BluetoothRectifier.Core.Interop;
-using BluetoothRectifier.Core.Services;
-using AppContext = BluetoothRectifier.UI.Tray.AppContext;
+using BetterBluetooth.CLI;
+using BetterBluetooth.Core.Interop;
+using BetterBluetooth.Core.Services;
+using AppContext = BetterBluetooth.UI.Tray.AppContext;
 
-namespace BluetoothRectifier;
+namespace BetterBluetooth;
 
 static class Program
 {
@@ -89,7 +89,7 @@ static class Program
         Console.WriteLine();
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("================================================================================");
-        Console.WriteLine(" Bluetooth Classic Rectifier — Milestone 2 Discovery Test");
+        Console.WriteLine(" Better Bluetooth — Discovery Test");
         Console.WriteLine("================================================================================");
         Console.ResetColor();
 

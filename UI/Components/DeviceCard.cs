@@ -5,12 +5,12 @@ using System.Drawing.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Windows.Devices.Enumeration;
-using BluetoothRectifier.Core.Models;
-using BluetoothRectifier.Core.Services;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.Core.Models;
+using BetterBluetooth.Core.Services;
+using BetterBluetooth.UI.Theme;
 using Panel = System.Windows.Forms.Panel;
 
-namespace BluetoothRectifier.UI.Components;
+namespace BetterBluetooth.UI.Components;
 
 /// <summary>
 /// Reusable card component for rendering Bluetooth devices in the Nearby and My Devices lists.

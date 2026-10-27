@@ -2,10 +2,10 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BluetoothRectifier.Core.Models;
-using BluetoothRectifier.Core.Services;
+using BetterBluetooth.Core.Models;
+using BetterBluetooth.Core.Services;
 
-namespace BluetoothRectifier.CLI;
+namespace BetterBluetooth.CLI;
 
 /// <summary>
 /// Interactive Milestone 4 Test Runner:

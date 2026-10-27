@@ -10,10 +10,10 @@ using Microsoft.Win32;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using Windows.Devices.Radios;
-using BluetoothRectifier.Core.Models;
+using BetterBluetooth.Core.Models;
 using Timer = System.Threading.Timer;
 
-namespace BluetoothRectifier.Core.Services;
+namespace BetterBluetooth.Core.Services;
 
 /// <summary>
 /// Event-driven Auto-Forget & Auto-Pair engine.

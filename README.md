@@ -1,6 +1,6 @@
-# Bluetooth Rectifier
+# Better Bluetooth
 
-A lightweight, modern Windows utility designed to solve persistent reconnect failures with Bluetooth Classic peripherals—especially third-party Switch Pro controllers (e.g., Cosmic Byte clones) and Classic audio devices—by automating clean unpairing, live HCI inquiry rediscovery, re-pairing, and event-driven **Auto-Forget**.
+A lightweight, modern Windows utility designed to solve persistent reconnect failures with Bluetooth Classic peripherals—especially third-party Switch Pro controllers (e.g., Cosmic Byte clones) and Classic audio devices—by automating clean unpairing, live HCI inquiry rediscovery, re-pairing, and event-driven **Auto-Forget & Auto-Pair**.
 
 ---
 
@@ -14,7 +14,7 @@ When you turn off the controller or reboot your PC:
 3. Windows rejects or ignores the connection because it expects the existing security key.
 4. The user is trapped in an infinite reconnect failure loop: Windows reports the device as paired, but clicking "Connect" does nothing until the user manually dives into Windows Settings, deletes the device, and pairs it again from scratch.
 
-**Bluetooth Rectifier eliminates this friction entirely.**
+**Better Bluetooth eliminates this friction entirely.**
 
 ---
 
@@ -42,49 +42,48 @@ When you turn off the controller or reboot your PC:
   - **Zero-Blink Countdown UI**: Double-buffered fine-grained repainting (`ctrl.Invalidate()`) updates countdown timers without redrawing controls or flickering.
 - **Global Hotkey & Tray Integration**:
   - Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> from anywhere to toggle the overlay.
-  - Runs silently in the system tray with a custom teal geometric Bluetooth rune icon and native Windows balloon notifications on auto-forget.
+  - Runs silently in the system tray with a custom teal geometric Bluetooth rune icon and native Windows balloon notifications on auto-forget and auto-pair.
   - **Start with Windows**: Toggle autostart on login via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` directly from the tray context menu.
 - **Audit Logging**:
-  - Dual CSV audit logs written to `%APPDATA%\BluetoothRectifier\discovery.csv` and `./discovery.csv` tracking timestamped phases, MACs, RSSI levels, and pairing transitions.
+  - Dual CSV audit logs written to `%APPDATA%\BetterBluetooth\discovery.csv` and `./discovery.csv` tracking timestamped phases, MACs, RSSI levels, and pairing transitions.
 - **Interactive CLI Testing Harness**:
   - Built-in command-line test suites for discovery, pairing sequences, and disconnect verification.
 
 ---
 
-## ⚙️ How Auto-Forget Works
+## ⚙️ How Auto-Forget & Auto-Pair Work
 
-Auto-Forget operates through an event-driven pipeline coordinated across three distinct layers:
+The automation operates through an event-driven pipeline coordinated across three distinct layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 1. UI Layer (MainForm.cs / DeviceCard.cs)                       │
-│    • User enables Auto-Forget on a card (≡×)                     │
+│    • User enables Auto-Forget (≡×) / Auto-Pair (⚡) on card     │
 │    • User toggles master switch: "Fix stale pairings auto..."   │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Dispatches state changes
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 2. Storage Layer (AutoForgetStore.cs)                           │
-│    • Persists state to %APPDATA%\BluetoothRectifier\autoforget  │
+│    • Persists state to %APPDATA%\BetterBluetooth\autoforget     │
 │    • Thread-safe JSON store with backward-compatible format     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Fires Changed event
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 3. Enforcement Engine (AutoForgetEngine.cs)                     │
-│    • Detects disconnect of an in-session connected device       │
-│    • Evaluates master switch & safeguards                       │
-│    • Starts 20s countdown (live UI updates on card badge)       │
-│    • Unpairs device via WinRT & issues balloon tip notification │
+│    • Detects disconnect -> starts 20s grace period -> unpairs   │
+│    • Detects discoverable device -> auto-pairs via WinRT        │
+│    • Cleans stale leftover crash pairings on startup            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Two-Tier Control Hierarchy
-1. **Per-Device Toggle (`≡×` button on device cards)**:
-   - When active (teal `≡×`), the device's MAC address is registered in `AutoForgetStore`.
+1. **Per-Device Toggle (`≡×` and `⚡` buttons on device cards)**:
+   - When active, the device's MAC address is registered in `AutoForgetStore` for auto-forgetting on disconnect and/or auto-pairing on discovery.
 2. **Master Auto-Fix Switch (Checkbox in footer)**:
    - Serves as a global safety circuit breaker.
-   - When unchecked, running countdowns are instantly cancelled and all automatic unpairing is paused across all devices.
+   - When unchecked, running countdowns are instantly cancelled and all automatic unpairing and pairing are paused across all devices.
    - The setting is saved to disk so it stays preserved across application restarts.
 
 ---
@@ -94,7 +93,7 @@ Auto-Forget operates through an event-driven pipeline coordinated across three d
 The application is modularized into three decoupled layers:
 
 ```
-bluetooth_rectifier/
+better_bluetooth/
 ├── Core/                              # Core domain and hardware integration
 │   ├── Interop/
 │   │   └── NativeMethods.cs           # Win32 P/Invoke (DWM corners, Hotkey, Console streams)
@@ -122,7 +121,7 @@ bluetooth_rectifier/
 │   └── AutoForgetTestRunner.cs        # Disconnect & grace countdown test (--autoforget-test)
 ├── Program.cs                         # Application entry point with CLI / GUI mode routing
 ├── publish.bat                        # 1-click single-file release build script
-└── BluetoothRectifier.csproj          # Target net8.0-windows10.0.19041.0
+└── BetterBluetooth.csproj             # Target net8.0-windows10.0.19041.0
 ```
 
 ---
@@ -139,8 +138,8 @@ bluetooth_rectifier/
 Clone the repository and build the project:
 
 ```powershell
-git clone https://github.com/your-username/bluetooth_rectifier.git
-cd bluetooth_rectifier
+git clone https://github.com/guru420e/better_bluetooth.git
+cd better_bluetooth
 dotnet build -c Release
 ```
 
@@ -154,6 +153,7 @@ dotnet run
 
 - Click the tray icon or press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to open the flyout.
 - Click the **`≡×`** button on any paired device card to enable **Auto-Forget**.
+- Click the **`⚡`** button on any nearby device card to enable **Auto-Pair**.
 - Check **"Fix stale pairings automatically"** in the footer to toggle the master engine.
 - Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
 - To exit, right-click the tray icon and choose **Exit**.
@@ -168,14 +168,14 @@ To produce a self-contained single-file `.exe` that runs on any compatible Windo
 
 The output executable is generated at:
 ```
-publish\BluetoothRectifier.exe
+publish\BetterBluetooth.exe
 ```
 
 ---
 
 ## 💻 CLI Test Modes
 
-Bluetooth Rectifier includes dedicated console test runners to diagnose and verify hardware pairing behavior without opening the UI:
+Better Bluetooth includes dedicated console test runners to diagnose and verify hardware pairing behavior without opening the UI:
 
 ### 1. Live Discovery Scanner (`--scan` or `-s`)
 Runs an active HCI inquiry scan to monitor all nearby discoverable Bluetooth Classic devices and their RSSI signal strengths in real time:
@@ -214,14 +214,17 @@ dotnet run -- --autoforget-test
 
 | File | Description | Location |
 | :--- | :--- | :--- |
-| **`autoforget.json`** | Persistent master toggle and MAC address list | `%APPDATA%\BluetoothRectifier\autoforget.json` |
-| **`discovery.csv`** | CSV audit log containing timestamp, phase, MAC, RSSI, and state | `%APPDATA%\BluetoothRectifier\discovery.csv`<br>`.\discovery.csv` |
+| **`autoforget.json`** | Persistent master toggle and MAC address rules | `%APPDATA%\BetterBluetooth\autoforget.json` |
+| **`discovery.csv`** | CSV audit log containing timestamp, phase, MAC, RSSI, and state | `%APPDATA%\BetterBluetooth\discovery.csv`<br>`.\discovery.csv` |
 
 ```json
-// Example %APPDATA%\BluetoothRectifier\autoforget.json:
+// Example %APPDATA%\BetterBluetooth\autoforget.json:
 {
   "AutoFixEnabled": true,
   "MacAddresses": [
+    "D0:56:80:B1:F0:03"
+  ],
+  "AutoPairMacAddresses": [
     "D0:56:80:B1:F0:03"
   ]
 }

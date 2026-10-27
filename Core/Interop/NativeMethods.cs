@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace BluetoothRectifier.Core.Interop;
+namespace BetterBluetooth.Core.Interop;
 
 /// <summary>
 /// Win32 P/Invoke declarations for window styling, hotkey, and console redirection.

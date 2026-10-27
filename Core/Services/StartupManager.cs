@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using Microsoft.Win32;
 
-namespace BluetoothRectifier.Core.Services;
+namespace BetterBluetooth.Core.Services;
 
 /// <summary>
 /// Manages Windows autostart on user login via the Registry:
@@ -11,7 +11,7 @@ namespace BluetoothRectifier.Core.Services;
 public static class StartupManager
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppValueName = "BluetoothRectifier";
+    private const string AppValueName = "BetterBluetooth";
 
     /// <summary>
     /// Checks whether the application is configured to run at Windows startup.

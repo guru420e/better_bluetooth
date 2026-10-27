@@ -3,11 +3,11 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
-using BluetoothRectifier.Core.Services;
-using BluetoothRectifier.UI.Forms;
-using BluetoothRectifier.UI.Theme;
+using BetterBluetooth.Core.Services;
+using BetterBluetooth.UI.Forms;
+using BetterBluetooth.UI.Theme;
 
-namespace BluetoothRectifier.UI.Tray;
+namespace BetterBluetooth.UI.Tray;
 
 /// <summary>
 /// Custom ApplicationContext so the app lives in the system tray even when
@@ -32,7 +32,7 @@ public sealed class AppContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon    = BuildTrayIcon(),
-            Text    = "Bluetooth Rectifier",
+            Text    = "Better Bluetooth",
             Visible = true,
         };
 
@@ -89,7 +89,7 @@ public sealed class AppContext : ApplicationContext
     {
         var menu = new ContextMenuStrip();
 
-        var openItem = new ToolStripMenuItem("Open Bluetooth Rectifier");
+        var openItem = new ToolStripMenuItem("Open Better Bluetooth");
         openItem.Font = new Font(openItem.Font, FontStyle.Bold); // bold = default action
         openItem.Click += (_, _) => _form.ShowAtTray();
 

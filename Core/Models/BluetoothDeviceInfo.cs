@@ -1,4 +1,4 @@
-namespace BluetoothRectifier.Core.Models;
+namespace BetterBluetooth.Core.Models;
 
 /// <summary>
 /// Immutable snapshot of one Bluetooth Classic device.
