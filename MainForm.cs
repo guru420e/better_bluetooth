@@ -109,14 +109,24 @@ public sealed class MainForm : Form
         // ── Auto-Forget Engine Events ───────────────────────────────────────────
         _engine.GraceCountdownTick += (mac, remaining) =>
         {
-            _countdownRemaining[AutoForgetStore.NormalizeMac(mac)] = remaining;
-            ScheduleRefresh();
+            string norm = AutoForgetStore.NormalizeMac(mac);
+            _countdownRemaining[norm] = remaining;
+
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => InvalidateCardForMac(norm));
+            }
         };
 
         _engine.GraceCountdownCancelled += mac =>
         {
-            _countdownRemaining.TryRemove(AutoForgetStore.NormalizeMac(mac), out _);
-            ScheduleRefresh();
+            string norm = AutoForgetStore.NormalizeMac(mac);
+            _countdownRemaining.TryRemove(norm, out _);
+
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => InvalidateCardForMac(norm));
+            }
         };
 
         _engine.DeviceAutoForgotten += (dev, reason) =>
@@ -147,6 +157,19 @@ public sealed class MainForm : Form
     private void ScheduleRefresh()
     {
         _needsRefresh = true;
+    }
+
+    private void InvalidateCardForMac(string normMac)
+    {
+        foreach (Control ctrl in _myDevicesFlow.Controls)
+        {
+            if (ctrl.Tag is BluetoothDeviceInfo dev &&
+                string.Equals(AutoForgetStore.NormalizeMac(dev.MacFormatted), normMac, StringComparison.OrdinalIgnoreCase))
+            {
+                ctrl.Invalidate();
+                return;
+            }
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -303,6 +326,11 @@ public sealed class MainForm : Form
 
         _contentPanel.Controls.Add(_innerLayout);
         Controls.Add(_contentPanel);
+
+        EnableDoubleBuffer(_contentPanel);
+        EnableDoubleBuffer(_innerLayout);
+        EnableDoubleBuffer(_nearbyFlow);
+        EnableDoubleBuffer(_myDevicesFlow);
 
         // ── Slim Dark Scrollbar (blends 100% with dark theme) ───────────────
         _darkScrollBar = new Panel
@@ -565,55 +593,8 @@ public sealed class MainForm : Form
         var nearby = all.Where(d => !d.IsPaired).OrderByDescending(d => d.Rssi ?? -999).ToList();
         var paired = all.Where(d => d.IsPaired).OrderByDescending(d => d.IsConnected).ThenBy(d => d.Name).ToList();
 
-        // ── Render Nearby Flow ─────────────────────────────────────────────
-        _nearbyFlow.SuspendLayout();
-        _nearbyFlow.Controls.Clear();
-
-        if (nearby.Count == 0)
-        {
-            var emptyLbl = new Label
-            {
-                Text      = _service.IsScanning ? "Searching for discoverable devices nearby..." : "No devices found. Click Scan.",
-                Font      = _fDevSub,
-                ForeColor = C_SecLabel,
-                AutoSize  = true,
-                Margin    = new Padding(4, 4, 0, 4),
-            };
-            _nearbyFlow.Controls.Add(emptyLbl);
-        }
-        else
-        {
-            foreach (var dev in nearby)
-            {
-                _nearbyFlow.Controls.Add(CreateNearbyCard(dev));
-            }
-        }
-        _nearbyFlow.ResumeLayout(true);
-
-        // ── Render My Devices Flow ─────────────────────────────────────────
-        _myDevicesFlow.SuspendLayout();
-        _myDevicesFlow.Controls.Clear();
-
-        if (paired.Count == 0)
-        {
-            var emptyLbl = new Label
-            {
-                Text      = "No paired devices found.",
-                Font      = _fDevSub,
-                ForeColor = C_SecLabel,
-                AutoSize  = true,
-                Margin    = new Padding(4, 4, 0, 4),
-            };
-            _myDevicesFlow.Controls.Add(emptyLbl);
-        }
-        else
-        {
-            foreach (var dev in paired)
-            {
-                _myDevicesFlow.Controls.Add(CreateMyDeviceCard(dev));
-            }
-        }
-        _myDevicesFlow.ResumeLayout(true);
+        ReconcileNearby(nearby);
+        ReconcileMyDevices(paired);
 
         // Update scroll bounds
         int maxScroll = Math.Max(0, _innerLayout.Height - _contentPanel.Height);
@@ -625,15 +606,135 @@ public sealed class MainForm : Form
         _darkScrollBar.Invalidate();
     }
 
+    private void ReconcileNearby(List<BluetoothDeviceInfo> nearby)
+    {
+        if (nearby.Count == 0)
+        {
+            if (_nearbyFlow.Controls.Count != 1 || !(_nearbyFlow.Controls[0] is Label))
+            {
+                _nearbyFlow.SuspendLayout();
+                _nearbyFlow.Controls.Clear();
+                _nearbyFlow.Controls.Add(new Label
+                {
+                    Text      = _service.IsScanning ? "Searching for discoverable devices nearby..." : "No devices found. Click Scan.",
+                    Font      = _fDevSub,
+                    ForeColor = C_SecLabel,
+                    AutoSize  = true,
+                    Margin    = new Padding(4, 4, 0, 4),
+                });
+                _nearbyFlow.ResumeLayout(true);
+            }
+            return;
+        }
+
+        var currentCards = _nearbyFlow.Controls.OfType<Control>()
+            .Where(c => c.Tag is BluetoothDeviceInfo)
+            .ToList();
+
+        bool needsRebuild = currentCards.Count != nearby.Count;
+        if (!needsRebuild)
+        {
+            for (int i = 0; i < nearby.Count; i++)
+            {
+                var cardDev = currentCards[i].Tag as BluetoothDeviceInfo;
+                if (cardDev == null || cardDev.Id != nearby[i].Id)
+                {
+                    needsRebuild = true;
+                    break;
+                }
+            }
+        }
+
+        if (needsRebuild)
+        {
+            _nearbyFlow.SuspendLayout();
+            _nearbyFlow.Controls.Clear();
+            foreach (var dev in nearby)
+            {
+                _nearbyFlow.Controls.Add(CreateNearbyCard(dev));
+            }
+            _nearbyFlow.ResumeLayout(true);
+        }
+        else
+        {
+            for (int i = 0; i < nearby.Count; i++)
+            {
+                currentCards[i].Tag = nearby[i];
+                currentCards[i].Invalidate();
+            }
+        }
+    }
+
+    private void ReconcileMyDevices(List<BluetoothDeviceInfo> paired)
+    {
+        if (paired.Count == 0)
+        {
+            if (_myDevicesFlow.Controls.Count != 1 || !(_myDevicesFlow.Controls[0] is Label))
+            {
+                _myDevicesFlow.SuspendLayout();
+                _myDevicesFlow.Controls.Clear();
+                _myDevicesFlow.Controls.Add(new Label
+                {
+                    Text      = "No paired devices found.",
+                    Font      = _fDevSub,
+                    ForeColor = C_SecLabel,
+                    AutoSize  = true,
+                    Margin    = new Padding(4, 4, 0, 4),
+                });
+                _myDevicesFlow.ResumeLayout(true);
+            }
+            return;
+        }
+
+        var currentCards = _myDevicesFlow.Controls.OfType<Control>()
+            .Where(c => c.Tag is BluetoothDeviceInfo)
+            .ToList();
+
+        bool needsRebuild = currentCards.Count != paired.Count;
+        if (!needsRebuild)
+        {
+            for (int i = 0; i < paired.Count; i++)
+            {
+                var cardDev = currentCards[i].Tag as BluetoothDeviceInfo;
+                if (cardDev == null || cardDev.Id != paired[i].Id || cardDev.IsConnected != paired[i].IsConnected)
+                {
+                    needsRebuild = true;
+                    break;
+                }
+            }
+        }
+
+        if (needsRebuild)
+        {
+            _myDevicesFlow.SuspendLayout();
+            _myDevicesFlow.Controls.Clear();
+            foreach (var dev in paired)
+            {
+                _myDevicesFlow.Controls.Add(CreateMyDeviceCard(dev));
+            }
+            _myDevicesFlow.ResumeLayout(true);
+        }
+        else
+        {
+            for (int i = 0; i < paired.Count; i++)
+            {
+                currentCards[i].Tag = paired[i];
+                currentCards[i].Invalidate();
+            }
+        }
+    }
+
     private Control CreateNearbyCard(BluetoothDeviceInfo dev)
     {
         var card = MakeCardPanel();
+        card.Tag = dev;
         string icon = GetDeviceEmoji(dev);
-        string sub = $"{dev.MacFormatted}  ·  {(dev.Rssi.HasValue ? $"{dev.Rssi.Value} dBm" : "Pairing mode")}";
 
-        card.Paint += (_, e) =>
+        card.Paint += (s, e) =>
         {
-            gPaintNearbyCardText(e.Graphics, icon, dev.Name, sub);
+            var cur = (BluetoothDeviceInfo)((Control)s!).Tag!;
+            string sub = $"{cur.MacFormatted}  ·  {(cur.Rssi.HasValue ? $"{cur.Rssi.Value} dBm" : "Pairing mode")}";
+            gPaintNearbyCardText(e.Graphics, icon, cur.Name, sub);
         };
 
         var btn = MakeButton("Connect", C_Teal, C_TealText, w: 86, h: 34);
@@ -658,36 +759,38 @@ public sealed class MainForm : Form
     private Control CreateMyDeviceCard(BluetoothDeviceInfo dev)
     {
         var card = MakeCardPanel();
+        card.Tag = dev;
         string icon = GetDeviceEmoji(dev);
 
-        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
-        string subText;
-        Color subColor;
+        card.Paint += (s, e) =>
+        {
+            var cur = (BluetoothDeviceInfo)((Control)s!).Tag!;
+            string normMac = AutoForgetStore.NormalizeMac(cur.MacFormatted);
+            string subText;
+            Color subColor;
 
-        if (_countdownRemaining.TryGetValue(normMac, out int secondsLeft))
-        {
-            subText = $"⏳ Forgetting in {secondsLeft}s...";
-            subColor = Color.FromArgb(0xFF, 0xB8, 0x6C); // Vibrant amber warning
-        }
-        else if (dev.IsConnected)
-        {
-            subText = "● Connected";
-            subColor = C_Connected;
-        }
-        else if (dev.Rssi.HasValue)
-        {
-            subText = $"Paired · Not connected ({dev.Rssi.Value} dBm)";
-            subColor = C_TextSec;
-        }
-        else
-        {
-            subText = "Paired · Out of range";
-            subColor = C_SecLabel;
-        }
+            if (_countdownRemaining.TryGetValue(normMac, out int secondsLeft))
+            {
+                subText = $"⏳ Forgetting in {secondsLeft}s...";
+                subColor = Color.FromArgb(0xFF, 0xB8, 0x6C); // Vibrant amber warning
+            }
+            else if (cur.IsConnected)
+            {
+                subText = "● Connected";
+                subColor = C_Connected;
+            }
+            else if (cur.Rssi.HasValue)
+            {
+                subText = $"Paired · Not connected ({cur.Rssi.Value} dBm)";
+                subColor = C_TextSec;
+            }
+            else
+            {
+                subText = "Paired · Out of range";
+                subColor = C_SecLabel;
+            }
 
-        card.Paint += (_, e) =>
-        {
-            gPaintMyDeviceCardText(e.Graphics, icon, dev.Name, subText, subColor);
+            gPaintMyDeviceCardText(e.Graphics, icon, cur.Name, subText, subColor);
         };
 
         // 1. Trash / Remove button (X=354, W=34)
