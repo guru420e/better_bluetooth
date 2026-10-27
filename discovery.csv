@@ -4614,3 +4614,76 @@
 2026-10-28 01:24:11,known,Boult Audio Airbass,73:79:1D:4D:59:8F,True,False,0,Audio
 2026-10-28 01:24:11,known,SoundDrum 1,41:42:73:42:AA:67,True,True,-128,Audio
 2026-10-28 01:24:12,known,VISHAL,C8:94:02:82:D7:86,False,False,-82,CoD 1
+2026-10-28 01:32:24,known,Rockerz 551ANC,D0:9F:A9:61:32:DC,True,False,,Audio
+2026-10-28 01:32:24,known,UBON SP-47,41:42:45:7A:44:5D,True,False,-128,Audio
+2026-10-28 01:32:24,known,SoundDrum 1,41:42:73:42:AA:67,True,True,-128,Audio
+2026-10-28 01:32:24,known,Boult Audio Airbass,73:79:1D:4D:59:8F,True,False,0,Audio
+2026-10-28 01:32:24,known,realme Buds T310,88:0E:85:C6:37:A7,True,False,-56,Audio
+2026-10-28 01:32:24,known,Airdopes 161,BB:A6:55:C6:A6:63,True,False,0,Audio
+2026-10-28 01:32:24,known,Rockerz 551ANC,D0:9F:A9:61:32:DC,True,False,-38,Audio
+2026-10-28 01:32:24,known,Mivi DuoPods K5,F4:4E:FD:55:3E:31,True,False,-76,Audio
+2026-10-28 01:32:24,known,VISHAL,C8:94:02:82:D7:86,False,False,-82,CoD 1
+2026-10-28 01:32:25,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:32:41,known,VISHAL,C8:94:02:82:D7:86,False,False,-83,CoD 1
+2026-10-28 01:32:44,known,VISHAL,C8:94:02:82:D7:86,False,False,-73,CoD 1
+2026-10-28 01:33:07,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:33:11,live,Pro Controller,D0:56:80:B1:F0:03,False,False,-52,Peripheral
+2026-10-28 01:33:17,live,Pro Controller,D0:56:80:B1:F0:03,False,True,0,Peripheral
+2026-10-28 01:33:17,live,Pro Controller,D0:56:80:B1:F0:03,True,True,0,Peripheral
+2026-10-28 01:33:29,known,VISHAL,C8:94:02:82:D7:86,False,False,-74,CoD 1
+2026-10-28 01:33:40,known,VISHAL,C8:94:02:82:D7:86,False,False,-87,CoD 1
+2026-10-28 01:33:42,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:34:02,known,VISHAL,C8:94:02:82:D7:86,False,False,-73,CoD 1
+2026-10-28 01:34:21,known,VISHAL,C8:94:02:82:D7:86,False,False,-90,CoD 1
+2026-10-28 01:34:42,known,VISHAL,C8:94:02:82:D7:86,False,False,-80,CoD 1
+2026-10-28 01:35:02,known,VISHAL,C8:94:02:82:D7:86,False,False,-86,CoD 1
+2026-10-28 01:35:04,known,VISHAL,C8:94:02:82:D7:86,False,False,-76,CoD 1
+2026-10-28 01:35:21,known,VISHAL,C8:94:02:82:D7:86,False,False,-73,CoD 1
+2026-10-28 01:35:43,known,VISHAL,C8:94:02:82:D7:86,False,False,-86,CoD 1
+2026-10-28 01:36:04,known,VISHAL,C8:94:02:82:D7:86,False,False,-85,CoD 1
+2026-10-28 01:36:24,known,VISHAL,C8:94:02:82:D7:86,False,False,-88,CoD 1
+2026-10-28 01:36:48,known,VISHAL,C8:94:02:82:D7:86,False,False,-70,CoD 1
+2026-10-28 01:37:07,known,VISHAL,C8:94:02:82:D7:86,False,False,-83,CoD 1
+2026-10-28 01:37:25,known,VISHAL,C8:94:02:82:D7:86,False,False,-84,CoD 1
+2026-10-28 01:37:47,known,VISHAL,C8:94:02:82:D7:86,False,False,-73,CoD 1
+2026-10-28 01:38:06,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:38:21,live,Pro Controller,D0:56:80:B1:F0:03,True,False,0,Peripheral
+2026-10-28 01:38:26,known,VISHAL,C8:94:02:82:D7:86,False,False,-74,CoD 1
+2026-10-28 01:38:45,live,Pro Controller,D0:56:80:B1:F0:03,False,False,0,Peripheral
+2026-10-28 01:38:45,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,True,False,0,"Auto-forget executed after disconnect > 20s (Result: Unpaired)"
+2026-10-28 01:38:48,known,VISHAL,C8:94:02:82:D7:86,False,False,-75,CoD 1
+2026-10-28 01:39:06,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,True,False,0,"Auto-forget executed after disconnect > 20s (Result: AlreadyUnpaired)"
+2026-10-28 01:39:15,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:39:26,known,VISHAL,C8:94:02:82:D7:86,False,False,-84,CoD 1
+2026-10-28 01:39:31,live,Pro Controller,D0:56:80:B1:F0:03,False,False,-53,Peripheral
+2026-10-28 01:39:47,live,Pro Controller,D0:56:80:B1:F0:03,False,False,-54,Peripheral
+2026-10-28 01:39:47,known,VISHAL,C8:94:02:82:D7:86,False,False,-79,CoD 1
+2026-10-28 01:39:51,live,Pro Controller,D0:56:80:B1:F0:03,False,True,0,Peripheral
+2026-10-28 01:39:52,live,Pro Controller,D0:56:80:B1:F0:03,True,True,0,Peripheral
+2026-10-28 01:39:59,live,Pro Controller,D0:56:80:B1:F0:03,True,False,0,Peripheral
+2026-10-28 01:40:00,known,VISHAL,C8:94:02:82:D7:86,False,False,-73,CoD 1
+2026-10-28 01:40:20,known,VISHAL,C8:94:02:82:D7:86,False,False,-75,CoD 1
+2026-10-28 01:40:23,live,Pro Controller,D0:56:80:B1:F0:03,False,False,0,Peripheral
+2026-10-28 01:40:23,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,False,False,0,"Auto-forget executed after disconnect > 20s (Result: Unpaired)"
+2026-10-28 01:40:44,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,True,False,0,"Auto-forget executed after disconnect > 20s (Result: AlreadyUnpaired)"
+2026-10-28 01:43:47,live,Unknown Device,10:82:D7:2B:EB:7A,False,False,-94,CoD 2
+2026-10-28 01:47:37,live,Pro Controller,D0:56:80:B1:F0:03,False,False,-52,Peripheral
+2026-10-28 01:47:46,live,Pro Controller,D0:56:80:B1:F0:03,False,True,0,Peripheral
+2026-10-28 01:47:46,live,Pro Controller,D0:56:80:B1:F0:03,True,True,0,Peripheral
+2026-10-28 01:48:00,live,Pro Controller,D0:56:80:B1:F0:03,True,False,0,Peripheral
+2026-10-28 01:48:23,live,Pro Controller,D0:56:80:B1:F0:03,False,False,0,Peripheral
+2026-10-28 01:48:23,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,False,False,0,"Auto-forget executed after disconnect > 20s (Result: Unpaired)"
+2026-10-28 01:48:44,AUTO-FORGET,"Pro Controller",D0:56:80:B1:F0:03,True,False,0,"Auto-forget executed after disconnect > 20s (Result: AlreadyUnpaired)"
+2026-10-28 01:50:03,live,Unknown Device,B0:A3:F2:6E:09:06,False,False,-84,Audio
+2026-10-28 01:50:13,live,realme Buds T300,B0:A3:F2:6E:09:06,False,False,-76,Audio
+2026-10-28 01:50:33,live,LAPTOP-I6FJ3GCT,B8:1E:A4:D9:93:6C,False,False,-70,CoD 1
+2026-10-28 01:50:33,live,realme Buds T300,B0:A3:F2:6E:09:06,False,False,-77,Audio
+2026-10-28 01:50:54,live,realme Buds T300,B0:A3:F2:6E:09:06,False,False,-76,Audio
+2026-10-28 01:53:05,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-72,CoD 2
+2026-10-28 01:53:40,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-75,CoD 2
+2026-10-28 01:53:56,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-74,CoD 2
+2026-10-28 01:53:58,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-67,CoD 2
+2026-10-28 01:54:23,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-75,CoD 2
+2026-10-28 01:54:25,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-71,CoD 2
+2026-10-28 01:54:37,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-75,CoD 2
+2026-10-28 01:54:58,live,OPPO K13 5G,0C:BD:75:A4:09:18,False,False,-70,CoD 2
