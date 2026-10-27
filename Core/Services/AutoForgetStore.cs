@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace BluetoothRectifier;
+namespace BluetoothRectifier.Core.Services;
 
 /// <summary>
 /// Persists the list of MAC addresses marked for Auto-Forget.
@@ -19,18 +19,12 @@ public sealed class AutoForgetStore
 
     public int Count
     {
-        get
-        {
-            lock (_lock) return _macs.Count;
-        }
+        get { lock (_lock) return _macs.Count; }
     }
 
     public IReadOnlyCollection<string> MacAddresses
     {
-        get
-        {
-            lock (_lock) return new List<string>(_macs);
-        }
+        get { lock (_lock) return new List<string>(_macs); }
     }
 
     public AutoForgetStore(string? customPath = null)
@@ -53,10 +47,7 @@ public sealed class AutoForgetStore
     public bool Contains(string mac)
     {
         if (string.IsNullOrWhiteSpace(mac)) return false;
-        lock (_lock)
-        {
-            return _macs.Contains(NormalizeMac(mac));
-        }
+        lock (_lock) return _macs.Contains(NormalizeMac(mac));
     }
 
     public bool Toggle(string mac)

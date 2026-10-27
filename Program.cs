@@ -1,10 +1,13 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
+using BluetoothRectifier.CLI;
+using BluetoothRectifier.Core.Interop;
+using BluetoothRectifier.Core.Services;
+using AppContext = BluetoothRectifier.UI.Tray.AppContext;
 
 namespace BluetoothRectifier;
 
