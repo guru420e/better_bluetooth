@@ -2,10 +2,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
+using BluetoothRectifier.Core.Models;
 
-namespace BluetoothRectifier;
+namespace BluetoothRectifier.Core.Services;
 
 /// <summary>
 /// Bluetooth Classic discovery and device management service.
@@ -14,9 +17,8 @@ namespace BluetoothRectifier;
 /// </summary>
 public sealed class BluetoothService : IDisposable
 {
-    // Bluetooth Classic Protocol GUID
     public const string ClassicProtocolId = "{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}";
-    public const string ClassicAqsFilter = $"System.Devices.Aep.ProtocolId:=\"{ClassicProtocolId}\"";
+    public const string ClassicAqsFilter   = $"System.Devices.Aep.ProtocolId:=\"{ClassicProtocolId}\"";
 
     public static readonly string[] RequestedProperties = new[]
     {
@@ -50,7 +52,6 @@ public sealed class BluetoothService : IDisposable
         (_watcher.Status == DeviceWatcherStatus.Started || _watcher.Status == DeviceWatcherStatus.EnumerationCompleted);
 
     public bool HasEnumerationCompleted => _isEnumerationCompleted;
-
     public IReadOnlyCollection<BluetoothDeviceInfo> Devices => _devices.Values.ToList();
 
     public BluetoothService(string? customCsvPath = null)
@@ -60,7 +61,7 @@ public sealed class BluetoothService : IDisposable
         Directory.CreateDirectory(dir);
         _csvPaths.Add(Path.Combine(dir, "discovery.csv"));
 
-        // Also log to current directory discovery.csv for easy terminal inspection
+        // Mirror logs to current working directory discovery.csv for easy terminal inspection
         string local = Path.Combine(Directory.GetCurrentDirectory(), "discovery.csv");
         if (!_csvPaths.Contains(local, StringComparer.OrdinalIgnoreCase))
             _csvPaths.Add(local);
@@ -73,7 +74,7 @@ public sealed class BluetoothService : IDisposable
         EnsureCsvHeader();
     }
 
-    // ── Scanner lifecycle ──────────────────────────────────────────────────
+    // ── Scanner Lifecycle ──────────────────────────────────────────────────
 
     public void StartScan()
     {
@@ -203,11 +204,9 @@ public sealed class BluetoothService : IDisposable
 
             StatusMessage?.Invoke($"Device ready: CanPair={dev.Pairing.CanPair}, IsPaired={dev.Pairing.IsPaired}");
 
-            // If already paired, nothing to do
             if (dev.Pairing.IsPaired)
                 return DevicePairingResultStatus.AlreadyPaired;
 
-            // Handle pairing ceremonies (Just Works, Numeric Comparison, PIN 0000/1234)
             var custom = dev.Pairing.Custom;
             void OnPairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
             {
@@ -243,7 +242,6 @@ public sealed class BluetoothService : IDisposable
                 if (res.Status != DevicePairingResultStatus.Paired &&
                     res.Status != DevicePairingResultStatus.AlreadyPaired)
                 {
-                    // Fallback to basic PairAsync
                     StatusMessage?.Invoke("Custom pairing returned non-success, attempting standard PairAsync...");
                     res = await dev.Pairing.PairAsync(DevicePairingProtectionLevel.None);
                     StatusMessage?.Invoke($"Standard PairAsync result: {res.Status}");
@@ -289,7 +287,6 @@ public sealed class BluetoothService : IDisposable
         var updated = MergeUpdate(existing, update);
         _devices[update.Id] = updated;
 
-        // Log if RSSI, connection or pairing status changed
         if (existing.IsConnected != updated.IsConnected ||
             existing.IsPaired != updated.IsPaired ||
             existing.Rssi != updated.Rssi)
@@ -318,7 +315,7 @@ public sealed class BluetoothService : IDisposable
         StatusMessage?.Invoke("Watcher stopped.");
     }
 
-    // ── Parsing & Property Extraction ──────────────────────────────────────
+    // ── Property Extraction & Parsing ──────────────────────────────────────
 
     private static BluetoothDeviceInfo ParseDeviceInfo(DeviceInformation info, string phase)
     {

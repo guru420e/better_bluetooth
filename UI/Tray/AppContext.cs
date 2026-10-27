@@ -3,15 +3,18 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using BluetoothRectifier.Core.Services;
+using BluetoothRectifier.UI.Forms;
+using BluetoothRectifier.UI.Theme;
 
-namespace BluetoothRectifier;
+namespace BluetoothRectifier.UI.Tray;
 
 /// <summary>
-/// Custom ApplicationContext so the app lives in the tray even when
+/// Custom ApplicationContext so the app lives in the system tray even when
 /// the overlay window is hidden. The app only exits when the user
 /// chooses "Exit" from the tray menu.
 /// </summary>
-sealed class AppContext : ApplicationContext
+public sealed class AppContext : ApplicationContext
 {
     private readonly NotifyIcon       _tray;
     private readonly MainForm         _form;
@@ -46,7 +49,7 @@ sealed class AppContext : ApplicationContext
         _form.HotkeyPressed += ToggleWindow;
 
         // Auto-forget notification via tray balloon tip
-        _engine.DeviceAutoForgotten += (dev, reason) =>
+        _engine.DeviceAutoForgotten += (dev, _) =>
         {
             try
             {
@@ -90,7 +93,7 @@ sealed class AppContext : ApplicationContext
 
     private void ExitApp()
     {
-        _tray.Visible = false;  // remove tray icon before exit so it doesn't ghost
+        _tray.Visible = false; // remove tray icon before exit so it doesn't ghost
         _form.ForceClose();
         _engine.Dispose();
         _service.Dispose();
@@ -99,38 +102,49 @@ sealed class AppContext : ApplicationContext
 
     // ── Tray icon ──────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Draws a 32×32 teal circle with a dark "B" in the centre.
-    /// No external .ico file needed.
-    /// </summary>
     private static Icon BuildTrayIcon()
     {
-        const int sz = 32;
-        using var bmp = new Bitmap(sz, sz, PixelFormat.Format32bppArgb);
-        using var g   = Graphics.FromImage(bmp);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(Color.Transparent);
+        const int size = 32;
+        using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
 
-        // Teal circle
-        using (var brush = new SolidBrush(Color.FromArgb(0x3D, 0xD6, 0xB0)))
-            g.FillEllipse(brush, 1, 1, sz - 2, sz - 2);
+            using var brush = new SolidBrush(Color.FromArgb(240, 20, 22, 26));
+            g.FillEllipse(brush, 1, 1, size - 2, size - 2);
 
-        // Dark "B" centred
-        using var font  = new Font("Segoe UI", sz * 0.42f, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var brush2 = new SolidBrush(Color.FromArgb(0x0E, 0x10, 0x14));
-        var size = g.MeasureString("B", font);
-        g.DrawString("B", font, brush2,
-            (sz - size.Width)  / 2f - 0.5f,
-            (sz - size.Height) / 2f);
+            using var pen = new Pen(AppTheme.Teal, 2.5f)
+            {
+                StartCap = LineCap.Round,
+                EndCap   = LineCap.Round,
+                LineJoin = LineJoin.Round,
+            };
 
-        // Clone the icon so we can safely call DestroyIcon on the HICON
-        var hIcon = bmp.GetHicon();
-        var icon  = (Icon)Icon.FromHandle(hIcon).Clone();
-        NativeMethods.DestroyIcon(hIcon);
+            float cx = size / 2f;
+            float top = 7f;
+            float bot = 25f;
+            float wing = 7f;
+
+            // Vertical spine
+            g.DrawLine(pen, cx, top, cx, bot);
+            // Upper diamond: center-low -> right-high -> spine-top
+            g.DrawLine(pen, cx, 16f, cx + wing, 11.5f);
+            g.DrawLine(pen, cx + wing, 11.5f, cx, top);
+            // Lower diamond: spine-top -> right-low -> spine-bot
+            g.DrawLine(pen, cx, top, cx + wing, 20.5f);
+            g.DrawLine(pen, cx + wing, 20.5f, cx, bot);
+            // Lower return to center-high
+            g.DrawLine(pen, cx, bot, cx + wing, 11.5f);
+            // Cross to left wings
+            g.DrawLine(pen, cx, 16f, cx - wing * 0.65f, 11.5f);
+            g.DrawLine(pen, cx, 16f, cx - wing * 0.65f, 20.5f);
+        }
+
+        IntPtr hIcon = bmp.GetHicon();
+        var icon = Icon.FromHandle(hIcon);
         return icon;
     }
-
-    // ── Cleanup ────────────────────────────────────────────────────────────
 
     protected override void Dispose(bool disposing)
     {

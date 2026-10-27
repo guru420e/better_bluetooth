@@ -1,11 +1,11 @@
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.Devices.Enumeration;
+using BluetoothRectifier.Core.Models;
+using BluetoothRectifier.Core.Services;
 
-namespace BluetoothRectifier;
+namespace BluetoothRectifier.CLI;
 
 /// <summary>
 /// Interactive Milestone 4 Test Runner:

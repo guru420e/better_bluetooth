@@ -10,9 +10,10 @@ using Microsoft.Win32;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using Windows.Devices.Radios;
+using BluetoothRectifier.Core.Models;
 using Timer = System.Threading.Timer;
 
-namespace BluetoothRectifier;
+namespace BluetoothRectifier.Core.Services;
 
 /// <summary>
 /// Event-driven Auto-Forget engine.
@@ -37,13 +38,8 @@ public sealed class AutoForgetEngine : IDisposable
     private readonly AutoForgetStore  _store;
 
     // ── Device State Tracking ──────────────────────────────────────────────
-    // Tracks MAC -> saw connected in this session
     private readonly ConcurrentDictionary<string, bool> _connectedInSession = new(StringComparer.OrdinalIgnoreCase);
-
-    // Tracks MAC -> active countdown expiration timestamp
     private readonly ConcurrentDictionary<string, (DateTime Expiration, BluetoothDeviceInfo Device)> _pendingForgets = new(StringComparer.OrdinalIgnoreCase);
-
-    // Tracks open BluetoothDevice objects for ConnectionStatusChanged events
     private readonly ConcurrentDictionary<string, BluetoothDevice> _activeBtDevices = new(StringComparer.OrdinalIgnoreCase);
 
     // ── Timers & Guards ────────────────────────────────────────────────────
@@ -54,7 +50,6 @@ public sealed class AutoForgetEngine : IDisposable
     private DateTime       _resumeBlackoutUntil = DateTime.MinValue;
     private volatile bool  _isRadioOn = true;
     private volatile bool  _isPaused  = false;
-    private readonly object _lock     = new();
 
     public int GracePeriodSeconds { get; set; } = DefaultGracePeriodSeconds;
     public bool IsPaused
@@ -74,21 +69,14 @@ public sealed class AutoForgetEngine : IDisposable
 
         _engineStartedTime = DateTime.UtcNow;
 
-        // 1. Subscribe to BluetoothService watcher events
         _service.DeviceDiscovered += OnDeviceDiscovered;
         _service.DeviceUpdated    += OnDeviceUpdated;
         _service.DeviceRemoved    += OnDeviceRemoved;
 
-        // 2. Initialize Radio monitoring
         _ = InitRadioAsync();
-
-        // 3. Initialize Sleep / Resume power monitoring
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
-        // 4. Timer for 1-second ticks on pending grace periods
-        _graceTimer = new Timer(OnGraceTimerTick, null, 1000, 1000);
-
-        // 5. 30-second heartbeat backup
+        _graceTimer     = new Timer(OnGraceTimerTick, null, 1000, 1000);
         _heartbeatTimer = new Timer(OnHeartbeatTick, null, HeartbeatIntervalSeconds * 1000, HeartbeatIntervalSeconds * 1000);
     }
 
@@ -111,7 +99,6 @@ public sealed class AutoForgetEngine : IDisposable
 
                     if (!_isRadioOn && wasOn)
                     {
-                        // Radio turned off — cancel all active countdowns immediately
                         CancelAllPendingCountdowns("Bluetooth radio was turned off");
                     }
                 };
@@ -142,11 +129,9 @@ public sealed class AutoForgetEngine : IDisposable
         if (_isPaused) return false;
         if (!_isRadioOn) return false;
 
-        // Startup blackout
         if (DateTime.UtcNow < _engineStartedTime.AddSeconds(StartupBlackoutSeconds))
             return false;
 
-        // Resume from sleep blackout
         if (DateTime.UtcNow < _resumeBlackoutUntil)
             return false;
 
@@ -155,19 +140,11 @@ public sealed class AutoForgetEngine : IDisposable
 
     // ── Device Event Handling ──────────────────────────────────────────────
 
-    private void OnDeviceDiscovered(BluetoothDeviceInfo dev)
-    {
-        ProcessDeviceState(dev);
-    }
-
-    private void OnDeviceUpdated(BluetoothDeviceInfo dev)
-    {
-        ProcessDeviceState(dev);
-    }
+    private void OnDeviceDiscovered(BluetoothDeviceInfo dev) => ProcessDeviceState(dev);
+    private void OnDeviceUpdated(BluetoothDeviceInfo dev)    => ProcessDeviceState(dev);
 
     private void OnDeviceRemoved(string deviceId)
     {
-        // If a device is completely removed, stop tracking it
         var norm = AutoForgetStore.NormalizeMac(deviceId);
         _pendingForgets.TryRemove(norm, out _);
     }
@@ -176,10 +153,8 @@ public sealed class AutoForgetEngine : IDisposable
     {
         string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
 
-        // Check if device is in user's auto-forget list
         if (!_store.Contains(normMac))
         {
-            // If user untoggled it, remove any pending countdown
             if (_pendingForgets.TryRemove(normMac, out _))
             {
                 GraceCountdownCancelled?.Invoke(normMac);
@@ -190,17 +165,14 @@ public sealed class AutoForgetEngine : IDisposable
         // 1. Device is CONNECTED
         if (dev.IsConnected)
         {
-            // Mark that we saw it connected in this current session!
             _connectedInSession[normMac] = true;
 
-            // If it had a pending countdown (brief disconnect), cancel it!
             if (_pendingForgets.TryRemove(normMac, out _))
             {
                 StatusMessage?.Invoke($"Device {dev.Name} reconnected within grace period. Countdown cancelled.");
                 GraceCountdownCancelled?.Invoke(normMac);
             }
 
-            // Hook native ConnectionStatusChanged event if not already hooked
             _ = HookNativeConnectionStatusAsync(dev);
             return;
         }
@@ -208,20 +180,16 @@ public sealed class AutoForgetEngine : IDisposable
         // 2. Device is DISCONNECTED
         if (!dev.IsConnected)
         {
-            // Check condition: Must have been seen CONNECTED earlier in this session
             if (!_connectedInSession.TryGetValue(normMac, out bool sawConnected) || !sawConnected)
             {
-                // Never saw it connected in this session — ignore (e.g. was already off when app started)
                 return;
             }
 
-            // Check safeguards
             if (!AreSafeguardsPassing())
             {
                 return;
             }
 
-            // Start countdown if not already counting down
             if (!_pendingForgets.ContainsKey(normMac))
             {
                 var expiration = DateTime.UtcNow.AddSeconds(GracePeriodSeconds);
@@ -262,7 +230,6 @@ public sealed class AutoForgetEngine : IDisposable
     {
         if (!AreSafeguardsPassing())
         {
-            // If safeguard failed while timers running, cancel or hold
             if (!_isRadioOn)
             {
                 CancelAllPendingCountdowns("Bluetooth radio turned off");
@@ -284,7 +251,6 @@ public sealed class AutoForgetEngine : IDisposable
             }
             else
             {
-                // Grace period expired! Execute Auto-Forget
                 _pendingForgets.TryRemove(mac, out _);
                 _ = ExecuteAutoForgetAsync(dev);
             }
@@ -299,10 +265,8 @@ public sealed class AutoForgetEngine : IDisposable
         var result = await _service.UnpairDeviceAsync(dev.Id);
         string reason = $"Auto-forget executed after disconnect > {GracePeriodSeconds}s (Result: {result})";
 
-        // Reset session connected flag
         _connectedInSession.TryRemove(AutoForgetStore.NormalizeMac(mac), out _);
 
-        // Audit log to discovery CSV
         LogAuditToCsv(dev, reason);
 
         DeviceAutoForgotten?.Invoke(dev, reason);
@@ -313,11 +277,9 @@ public sealed class AutoForgetEngine : IDisposable
 
     private void OnHeartbeatTick(object? state)
     {
-        // Only run heartbeat if user actually has devices on the auto-forget list
         if (_store.Count == 0 || !AreSafeguardsPassing())
             return;
 
-        // Verify tracked devices against service's cached states
         foreach (string mac in _store.MacAddresses)
         {
             var dev = _service.FindByMac(mac);
