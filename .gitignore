@@ -15,4 +15,7 @@ obj/
 *.log
 discovery.csv
 app_ui.jpg
+publish/
+publish-standalone/
+
 

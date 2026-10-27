@@ -77,6 +77,14 @@ public sealed class AutoForgetEngine : IDisposable
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         _graceTimer     = new Timer(OnGraceTimerTick, null, 1000, 1000);
+        _store.Changed += () =>
+        {
+            if (!_store.AutoFixEnabled)
+            {
+                CancelAllPendingCountdowns("Auto-fix disabled by user");
+            }
+        };
+
         _heartbeatTimer = new Timer(OnHeartbeatTick, null, HeartbeatIntervalSeconds * 1000, HeartbeatIntervalSeconds * 1000);
     }
 
@@ -128,6 +136,7 @@ public sealed class AutoForgetEngine : IDisposable
     {
         if (_isPaused) return false;
         if (!_isRadioOn) return false;
+        if (!_store.AutoFixEnabled) return false;
 
         if (DateTime.UtcNow < _engineStartedTime.AddSeconds(StartupBlackoutSeconds))
             return false;

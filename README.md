@@ -105,7 +105,18 @@ dotnet run
 
 - Click the tray icon or press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to open the flyout.
 - Click the **`≡×`** button on any paired device card to enable **Auto-Forget**.
+- Check **"Fix stale pairings automatically"** in the footer to toggle the master engine.
+- Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
 - To exit, right-click the tray icon and choose **Exit**.
+
+### Single-File Publishing
+
+To build a standalone single-file `.exe` without needing the .NET SDK to run it:
+
+```powershell
+./publish.bat
+```
+The output executable will be created at `./publish/BluetoothRectifier.exe`.
 
 ---
 

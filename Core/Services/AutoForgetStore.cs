@@ -6,13 +6,14 @@ using System.Text.Json;
 namespace BluetoothRectifier.Core.Services;
 
 /// <summary>
-/// Persists the list of MAC addresses marked for Auto-Forget.
-/// Saved to %APPDATA%\BluetoothRectifier\autoforget.json.
+/// Persists the list of MAC addresses marked for Auto-Forget and the global
+/// Auto-Fix master toggle. Saved to %APPDATA%\BluetoothRectifier\autoforget.json.
 /// </summary>
 public sealed class AutoForgetStore
 {
     private readonly string _filePath;
     private readonly HashSet<string> _macs = new(StringComparer.OrdinalIgnoreCase);
+    private bool _autoFixEnabled = true;
     private readonly object _lock = new();
 
     public event Action? Changed;
@@ -25,6 +26,21 @@ public sealed class AutoForgetStore
     public IReadOnlyCollection<string> MacAddresses
     {
         get { lock (_lock) return new List<string>(_macs); }
+    }
+
+    public bool AutoFixEnabled
+    {
+        get { lock (_lock) return _autoFixEnabled; }
+        set
+        {
+            lock (_lock)
+            {
+                if (_autoFixEnabled == value) return;
+                _autoFixEnabled = value;
+                Save();
+            }
+            Changed?.Invoke();
+        }
     }
 
     public AutoForgetStore(string? customPath = null)
@@ -103,15 +119,37 @@ public sealed class AutoForgetStore
             {
                 if (File.Exists(_filePath))
                 {
-                    string json = File.ReadAllText(_filePath);
-                    var list = JsonSerializer.Deserialize<List<string>>(json);
-                    if (list != null)
+                    string json = File.ReadAllText(_filePath).Trim();
+                    if (json.StartsWith("["))
                     {
-                        _macs.Clear();
-                        foreach (var m in list)
+                        // Backward compatibility: raw list of strings
+                        var list = JsonSerializer.Deserialize<List<string>>(json);
+                        if (list != null)
                         {
-                            if (!string.IsNullOrWhiteSpace(m))
-                                _macs.Add(NormalizeMac(m));
+                            _macs.Clear();
+                            foreach (var m in list)
+                            {
+                                if (!string.IsNullOrWhiteSpace(m))
+                                    _macs.Add(NormalizeMac(m));
+                            }
+                        }
+                    }
+                    else if (json.StartsWith("{"))
+                    {
+                        // Structured store with settings and mac list
+                        var doc = JsonSerializer.Deserialize<StoreData>(json);
+                        if (doc != null)
+                        {
+                            _autoFixEnabled = doc.AutoFixEnabled;
+                            _macs.Clear();
+                            if (doc.MacAddresses != null)
+                            {
+                                foreach (var m in doc.MacAddresses)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(m))
+                                        _macs.Add(NormalizeMac(m));
+                                }
+                            }
                         }
                     }
                 }
@@ -124,7 +162,13 @@ public sealed class AutoForgetStore
     {
         try
         {
-            string json = JsonSerializer.Serialize(new List<string>(_macs), new JsonSerializerOptions { WriteIndented = true });
+            var data = new StoreData
+            {
+                AutoFixEnabled = _autoFixEnabled,
+                MacAddresses   = new List<string>(_macs),
+            };
+
+            string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_filePath, json);
         }
         catch { }
@@ -132,4 +176,10 @@ public sealed class AutoForgetStore
 
     public static string NormalizeMac(string mac) =>
         mac.Replace("-", ":").Trim().ToUpperInvariant();
+
+    private sealed class StoreData
+    {
+        public bool AutoFixEnabled { get; set; } = true;
+        public List<string> MacAddresses { get; set; } = new();
+    }
 }

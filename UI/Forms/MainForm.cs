@@ -70,7 +70,15 @@ public sealed class MainForm : Form
         _service.DeviceRemoved        += _ => ScheduleRefresh();
         _service.EnumerationCompleted += OnEnumerationCompleted;
         _service.StatusMessage        += OnStatusMessage;
-        _store.Changed                += () => { _chipPanel?.Invalidate(); ScheduleRefresh(); };
+        _store.Changed += () =>
+        {
+            if (_footer != null && _footer.AutoFixEnabled != _store.AutoFixEnabled)
+            {
+                _footer.AutoFixEnabled = _store.AutoFixEnabled;
+            }
+            _chipPanel?.Invalidate();
+            ScheduleRefresh();
+        };
 
         // ── Auto-Forget Engine Events ───────────────────────────────────────────
         _engine.GraceCountdownTick += (mac, remaining) =>
@@ -297,6 +305,8 @@ public sealed class MainForm : Form
 
         // ── Footer Panel ───────────────────────────────────────────────────
         _footer = new FooterPanel();
+        _footer.AutoFixEnabled = _store.AutoFixEnabled;
+        _footer.AutoFixChanged += enabled => _store.AutoFixEnabled = enabled;
         Controls.Add(_footer);
 
         ResumeLayout(false);

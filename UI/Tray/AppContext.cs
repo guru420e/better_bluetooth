@@ -81,10 +81,21 @@ public sealed class AppContext : ApplicationContext
         openItem.Font = new Font(openItem.Font, FontStyle.Bold); // bold = default action
         openItem.Click += (_, _) => _form.ShowAtTray();
 
+        var startupItem = new ToolStripMenuItem("Start with Windows")
+        {
+            CheckOnClick = true,
+            Checked      = StartupManager.IsStartupEnabled(),
+        };
+        startupItem.CheckedChanged += (_, _) =>
+        {
+            StartupManager.SetStartup(startupItem.Checked);
+        };
+
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => ExitApp();
 
         menu.Items.Add(openItem);
+        menu.Items.Add(startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
