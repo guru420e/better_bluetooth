@@ -202,19 +202,24 @@ public sealed class AutoForgetEngine : IDisposable
 
     private void ProcessDeviceState(BluetoothDeviceInfo dev)
     {
-        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
+        string normMac = AutoForgetStore.NormalizeMac(!string.IsNullOrEmpty(dev.Mac) ? dev.MacFormatted : dev.Id);
 
-        // A. NEARBY / UNPAIRED DEVICE -> Check for Auto-Pair
-        if (!dev.IsPaired)
+        // ── 1. AUTO-PAIR RULE CHECK ──────────────────────────────────────────
+        // If device has an Auto-Pair rule AND is not currently connected:
+        // Automatically pair and connect it upon discovery!
+        if (!dev.IsConnected && _store.IsAutoPair(normMac))
         {
-            if (_store.IsAutoPair(normMac))
-            {
-                _ = TryAutoPairDeviceAsync(dev);
-            }
+            _ = TryAutoPairDeviceAsync(dev);
             return;
         }
 
-        // B. PAIRED DEVICE -> Check Auto-Forget rules
+        // ── 2. UNPAIRED DEVICE (no auto-pair rule) ──────────────────────────
+        if (!dev.IsPaired)
+        {
+            return;
+        }
+
+        // ── 3. PAIRED DEVICE -> Check Auto-Forget rules ─────────────────────
         if (!_store.Contains(normMac))
         {
             if (_pendingForgets.TryRemove(normMac, out _))
@@ -224,7 +229,7 @@ public sealed class AutoForgetEngine : IDisposable
             return;
         }
 
-        // 1. Device is CONNECTED
+        // 3a. Device is CONNECTED
         if (dev.IsConnected)
         {
             _connectedInSession[normMac] = true;
@@ -239,7 +244,7 @@ public sealed class AutoForgetEngine : IDisposable
             return;
         }
 
-        // 2. Device is DISCONNECTED
+        // 3b. Device is DISCONNECTED
         if (!dev.IsConnected)
         {
             if (!_connectedInSession.TryGetValue(normMac, out bool sawConnected) || !sawConnected)
@@ -264,17 +269,28 @@ public sealed class AutoForgetEngine : IDisposable
 
     private async Task TryAutoPairDeviceAsync(BluetoothDeviceInfo dev)
     {
-        string normMac = AutoForgetStore.NormalizeMac(dev.MacFormatted);
+        string normMac = AutoForgetStore.NormalizeMac(!string.IsNullOrEmpty(dev.Mac) ? dev.MacFormatted : dev.Id);
         if (normMac == "54:46:6E:55:74:01") return; // Safety guard
         if (!_pendingAutoPairs.TryAdd(normMac, true)) return;
 
         try
         {
-            StatusMessage?.Invoke($"[Auto-Pair] Discoverable device {dev.Name} ({dev.MacFormatted}) found. Pairing automatically...");
+            StatusMessage?.Invoke($"[Auto-Pair] Rule match for {dev.Name} ({normMac}). Connecting...");
+
+            // If already registered as paired in Windows but disconnected:
+            // Controller chip lost its key, so Windows will fail with AlreadyPaired unless
+            // the stale bond is cleared first.
+            if (dev.IsPaired && !dev.IsConnected)
+            {
+                StatusMessage?.Invoke($"[Auto-Pair] Clearing stale bond for {dev.Name} to re-pair fresh...");
+                await _service.UnpairDeviceAsync(dev.Id);
+                await Task.Delay(350);
+            }
+
             var result = await _service.PairDeviceAsync(dev.Id);
             if (result == DevicePairingResultStatus.Paired || result == DevicePairingResultStatus.AlreadyPaired)
             {
-                StatusMessage?.Invoke($"✔ [Auto-Pair] Successfully paired with {dev.Name}!");
+                StatusMessage?.Invoke($"✔ [Auto-Pair] Successfully connected & paired with {dev.Name}!");
                 DeviceAutoPaired?.Invoke(dev);
             }
             else
@@ -288,8 +304,7 @@ public sealed class AutoForgetEngine : IDisposable
         }
         finally
         {
-            // Delay removing from pending so we don't spam pair calls if inquiry triggers multiple updates
-            _ = Task.Delay(10000).ContinueWith(t => _pendingAutoPairs.TryRemove(normMac, out _));
+            _ = Task.Delay(4000).ContinueWith(t => _pendingAutoPairs.TryRemove(normMac, out _));
         }
     }
 

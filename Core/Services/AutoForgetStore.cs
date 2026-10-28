@@ -224,6 +224,17 @@ public sealed class AutoForgetStore : IDisposable
         Changed?.Invoke();
     }
 
+    public void ClearAllRules()
+    {
+        lock (_lock)
+        {
+            _forgetMacs.Clear();
+            _pairMacs.Clear();
+            _db.ClearAllRules();
+        }
+        Changed?.Invoke();
+    }
+
     public static string NormalizeMac(string mac) => DatabaseContext.NormalizeMac(mac);
 
     public void Dispose()

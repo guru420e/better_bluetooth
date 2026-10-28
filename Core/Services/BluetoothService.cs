@@ -390,6 +390,12 @@ public sealed class BluetoothService : IDisposable
     private static BluetoothDeviceInfo ParseDeviceInfo(DeviceInformation info, string phase)
     {
         string mac = ExtractProperty<string>(info.Properties, "System.Devices.Aep.DeviceAddress") ?? "";
+        if (string.IsNullOrWhiteSpace(mac))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(info.Id, @"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})");
+            if (match.Success) mac = match.Value;
+        }
+
         bool isPaired = ExtractProperty<bool>(info.Properties, "System.Devices.Aep.IsPaired");
         bool isConnected = ExtractProperty<bool>(info.Properties, "System.Devices.Aep.IsConnected");
         int? rssi = ExtractNullableInt(info.Properties, "System.Devices.Aep.SignalStrength");
@@ -430,6 +436,18 @@ public sealed class BluetoothService : IDisposable
         if (update.Properties.TryGetValue("System.ItemNameDisplay", out var pName) && pName is string s && !string.IsNullOrWhiteSpace(s))
             name = s;
 
+        string mac = current.Mac;
+        if (string.IsNullOrWhiteSpace(mac))
+        {
+            if (update.Properties.TryGetValue("System.Devices.Aep.DeviceAddress", out var pMac) && pMac is string sMac && !string.IsNullOrWhiteSpace(sMac))
+                mac = sMac;
+            else
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(update.Id, @"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})");
+                if (match.Success) mac = match.Value;
+            }
+        }
+
         int cod = current.CodMajor;
         if (update.Properties.TryGetValue("System.Devices.Aep.Bluetooth.Cod.Major", out var pCod) && pCod != null)
             cod = ConvertToInt(pCod);
@@ -440,6 +458,7 @@ public sealed class BluetoothService : IDisposable
             IsConnected = isConnected,
             Rssi = rssi,
             Name = name,
+            Mac = mac,
             CodMajor = cod,
             LastSeen = DateTime.UtcNow
         };

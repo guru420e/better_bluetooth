@@ -106,6 +106,15 @@ public sealed class DatabaseContext : IDisposable
         }
     }
 
+    public void ClearAllRules()
+    {
+        lock (_lock)
+        {
+            var col = _db.GetCollection<DeviceRuleRecord>(RulesCollectionName);
+            col.DeleteAll();
+        }
+    }
+
     // ── Settings Management ─────────────────────────────────────────────────
 
     public AppSettingsRecord GetSettings()
@@ -224,8 +233,24 @@ public sealed class DatabaseContext : IDisposable
         catch { }
     }
 
-    public static string NormalizeMac(string mac) =>
-        mac.Replace("-", ":").Trim().ToUpperInvariant();
+    public static string NormalizeMac(string mac)
+    {
+        if (string.IsNullOrWhiteSpace(mac)) return string.Empty;
+
+        var match = System.Text.RegularExpressions.Regex.Match(mac, @"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})");
+        if (match.Success)
+        {
+            return match.Value.Replace("-", ":").ToUpperInvariant();
+        }
+
+        string clean = System.Text.RegularExpressions.Regex.Replace(mac, @"[^0-9A-Fa-f]", "").ToUpperInvariant();
+        if (clean.Length == 12)
+        {
+            return string.Join(":", Enumerable.Range(0, 6).Select(i => clean.Substring(i * 2, 2)));
+        }
+
+        return mac.Replace("-", ":").Trim().ToUpperInvariant();
+    }
 
     public void Dispose()
     {
