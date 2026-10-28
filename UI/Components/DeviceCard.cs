@@ -179,7 +179,7 @@ public static class DeviceCard
     {
         var card = new Panel
         {
-            Size      = new Size(398, 76),
+            Size      = new Size(398, 68),
             BackColor = AppTheme.CardBg,
             Margin    = new Padding(0, 0, 0, 8),
         };
@@ -199,87 +199,97 @@ public static class DeviceCard
             g.DrawPath(pen, path);
 
             // Icon
-            g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 16f));
+            g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 18f));
 
             // Device Name
             TextRenderer.DrawText(g, name, AppTheme.FontDevName,
-                new Rectangle(50, 10, 300, 20), AppTheme.TextPrim,
+                new Rectangle(50, 14, 246, 22), AppTheme.TextPrim,
                 TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
             // MAC Address
-            TextRenderer.DrawText(g, mac, new Font("Segoe UI", 7.5f),
-                new Rectangle(50, 30, 290, 16), AppTheme.SecLabel,
+            TextRenderer.DrawText(g, mac, AppTheme.FontDevSub,
+                new Rectangle(50, 36, 246, 20), AppTheme.SecLabel,
                 TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
         };
-
-        // Trash / Reset button
-        var trash = AppTheme.CreateIconButton("🗑", AppTheme.Danger, w: 32, h: 28);
-        trash.Location = new Point(356, 10);
 
         bool autoForget = store.Contains(mac);
         bool autoPair   = store.IsAutoPair(mac);
 
-        var chkForget = new CheckBox
+        // 1. Auto-Unpair button (⏏) with ToolTip (X=304, Y=17, W=38, H=34)
+        var unpairBtn = new Button
         {
-            Text      = "Auto-unpair on disconnect",
-            Font      = new Font("Segoe UI", 8.5f),
-            ForeColor = AppTheme.TextPrim,
-            BackColor = AppTheme.CardBg,
-            AutoSize  = true,
-            Location  = new Point(50, 48),
-            Checked   = autoForget,
-            Cursor    = Cursors.Hand,
+            Text      = "⏏",
+            Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Size      = new Size(38, 34),
+            Location  = new Point(304, 17),
+            BackColor = autoForget ? AppTheme.Teal : AppTheme.CardBg,
+            ForeColor = autoForget ? AppTheme.TealText : AppTheme.TextSec,
             FlatStyle = FlatStyle.Flat,
-        };
-        chkForget.FlatAppearance.BorderSize  = 1;
-        chkForget.FlatAppearance.BorderColor = AppTheme.Border;
-
-        var chkPair = new CheckBox
-        {
-            Text      = "Auto-pair on discovery",
-            Font      = new Font("Segoe UI", 8.5f),
-            ForeColor = AppTheme.TextPrim,
-            BackColor = AppTheme.CardBg,
-            AutoSize  = true,
-            Location  = new Point(224, 48),
-            Checked   = autoPair,
             Cursor    = Cursors.Hand,
+            UseVisualStyleBackColor = false,
+        };
+        unpairBtn.FlatAppearance.BorderSize  = 1;
+        unpairBtn.FlatAppearance.BorderColor = autoForget ? AppTheme.Teal : AppTheme.Border;
+
+        // 2. Auto-Pair button (🔗) with ToolTip (X=348, Y=17, W=38, H=34)
+        var pairBtn = new Button
+        {
+            Text      = "🔗",
+            Font      = new Font("Segoe UI Emoji", 10.5f),
+            Size      = new Size(38, 34),
+            Location  = new Point(348, 17),
+            BackColor = autoPair ? AppTheme.Teal : AppTheme.CardBg,
+            ForeColor = autoPair ? AppTheme.TealText : AppTheme.TextSec,
             FlatStyle = FlatStyle.Flat,
+            Cursor    = Cursors.Hand,
+            UseVisualStyleBackColor = false,
         };
-        chkPair.FlatAppearance.BorderSize  = 1;
-        chkPair.FlatAppearance.BorderColor = AppTheme.Border;
+        pairBtn.FlatAppearance.BorderSize  = 1;
+        pairBtn.FlatAppearance.BorderColor = autoPair ? AppTheme.Teal : AppTheme.Border;
 
-        bool updating = false;
-
-        chkForget.CheckedChanged += (_, _) =>
+        unpairBtn.Click += (_, _) =>
         {
-            if (updating) return;
-            store.SetRule(mac, name, chkForget.Checked, chkPair.Checked);
+            bool nowForget = !store.Contains(mac);
+            bool curPair   = store.IsAutoPair(mac);
+            store.SetRule(mac, name, autoForget: nowForget, autoPair: curPair);
+
+            unpairBtn.BackColor = nowForget ? AppTheme.Teal : AppTheme.CardBg;
+            unpairBtn.ForeColor = nowForget ? AppTheme.TealText : AppTheme.TextSec;
+            unpairBtn.FlatAppearance.BorderColor = nowForget ? AppTheme.Teal : AppTheme.Border;
+
             onStoreChanged();
-            onStatusNotification($"Updated rules for {name}");
+            onStatusNotification(nowForget
+                ? $"Auto-unpair enabled for {name}."
+                : $"Auto-unpair disabled for {name}.");
         };
 
-        chkPair.CheckedChanged += (_, _) =>
+        pairBtn.Click += (_, _) =>
         {
-            if (updating) return;
-            store.SetRule(mac, name, chkForget.Checked, chkPair.Checked);
+            bool curForget = store.Contains(mac);
+            bool nowPair   = !store.IsAutoPair(mac);
+            store.SetRule(mac, name, autoForget: curForget, autoPair: nowPair);
+
+            pairBtn.BackColor = nowPair ? AppTheme.Teal : AppTheme.CardBg;
+            pairBtn.ForeColor = nowPair ? AppTheme.TealText : AppTheme.TextSec;
+            pairBtn.FlatAppearance.BorderColor = nowPair ? AppTheme.Teal : AppTheme.Border;
+
             onStoreChanged();
-            onStatusNotification($"Updated rules for {name}");
+            onStatusNotification(nowPair
+                ? $"Auto-pair enabled for {name}."
+                : $"Auto-pair disabled for {name}.");
         };
 
-        trash.Click += (_, _) =>
+        var tip = new ToolTip
         {
-            updating = true;
-            chkForget.Checked = false;
-            chkPair.Checked   = false;
-            updating = false;
-
-            store.Remove(mac);
-            onStoreChanged();
-            onStatusNotification($"Cleared all rules for {name}");
+            InitialDelay = 150,
+            ReshowDelay  = 100,
+            AutoPopDelay = 4000,
+            ShowAlways   = true,
         };
+        tip.SetToolTip(unpairBtn, "Auto-unpair on disconnect");
+        tip.SetToolTip(pairBtn, "Auto-pair on discovery");
 
-        card.Controls.AddRange(new Control[] { trash, chkForget, chkPair });
+        card.Controls.AddRange(new Control[] { unpairBtn, pairBtn });
         return card;
     }
 

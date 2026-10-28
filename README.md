@@ -162,7 +162,7 @@ dotnet run
 
 - Click the tray icon or press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to open the flyout.
 - Click the **`⚙ Rules`** chip or double-click any device card to view the in-place **DEVICE RULES** component.
-- Configure **Auto-unpair on disconnect** or **Auto-pair on discovery** per device with instant LiteDB persistence.
+- Configure **Auto-unpair on disconnect** (`⏏`) or **Auto-pair on discovery** (`🔗`) using the icon toggle buttons with instant LiteDB persistence.
 - Click **`← Devices`** or press <kbd>Esc</kbd> to return to the standard device list.
 - Devices with active automation display an **`[⚡ Auto]`** teal badge; double-clicking any device card opens its rules directly.
 - Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
