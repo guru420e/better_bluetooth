@@ -15,6 +15,9 @@ public sealed record BluetoothDeviceInfo
     public int    CodMajor             { get; init; }
     public string Phase                { get; init; } = "known";
     public bool   AutoForget           { get; set; }
+    public DateTime LastSeen           { get; init; } = DateTime.UtcNow;
+
+    public bool IsFresh => (DateTime.UtcNow - LastSeen).TotalSeconds < 14;
 
     public string CodLabel => CodMajor switch
     {

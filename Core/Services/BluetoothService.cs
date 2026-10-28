@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
+using Windows.Devices.Radios;
 using BetterBluetooth.Core.Models;
 
 namespace BetterBluetooth.Core.Services;
@@ -37,8 +38,10 @@ public sealed class BluetoothService : IDisposable
     public event Action<string>?              DeviceRemoved;
     public event Action?                      EnumerationCompleted;
     public event Action<string>?              StatusMessage;
+    public event Action<bool>?                RadioStateChanged;
 
     // ── State ──────────────────────────────────────────────────────────────
+    private Radio? _btRadio;
     private DeviceWatcher? _watcher;
     private readonly ConcurrentDictionary<string, BluetoothDeviceInfo> _devices = new();
     private volatile bool _isEnumerationCompleted;
@@ -47,6 +50,8 @@ public sealed class BluetoothService : IDisposable
 
     public IReadOnlyList<string> CsvPaths => _csvPaths;
     public string CsvPath => _csvPaths.Count > 0 ? _csvPaths[0] : "";
+
+    public bool IsRadioOn => _btRadio == null || _btRadio.State == RadioState.On;
 
     public bool IsScanning => _watcher != null && 
         (_watcher.Status == DeviceWatcherStatus.Started || _watcher.Status == DeviceWatcherStatus.EnumerationCompleted);
@@ -72,6 +77,71 @@ public sealed class BluetoothService : IDisposable
         }
 
         EnsureCsvHeader();
+        _ = InitRadioAsync();
+    }
+
+    // ── Radio Management ───────────────────────────────────────────────────
+
+    public async Task InitRadioAsync()
+    {
+        try
+        {
+            var radios = await Radio.GetRadiosAsync();
+            _btRadio = radios.FirstOrDefault(r => r.Kind == RadioKind.Bluetooth);
+            if (_btRadio != null)
+            {
+                _btRadio.StateChanged += (sender, _) =>
+                {
+                    bool isOn = sender.State == RadioState.On;
+                    StatusMessage?.Invoke($"Bluetooth Radio State: {sender.State}");
+                    RadioStateChanged?.Invoke(isOn);
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage?.Invoke($"Radio monitoring init: {ex.Message}");
+        }
+    }
+
+    public async Task<bool> ToggleRadioAsync()
+    {
+        if (_btRadio == null)
+        {
+            await InitRadioAsync();
+        }
+
+        if (_btRadio == null)
+            return false;
+
+        var targetState = _btRadio.State == RadioState.On ? RadioState.Off : RadioState.On;
+        try
+        {
+            var access = await Radio.RequestAccessAsync();
+            if (access == RadioAccessStatus.Allowed)
+            {
+                var status = await _btRadio.SetStateAsync(targetState);
+                if (status == RadioAccessStatus.Allowed)
+                {
+                    RadioStateChanged?.Invoke(targetState == RadioState.On);
+                    return true;
+                }
+            }
+
+            // Fallback: launch Windows Bluetooth settings
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true });
+            return false;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage?.Invoke($"Radio toggle: {ex.Message}");
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true });
+            }
+            catch { }
+            return false;
+        }
     }
 
     // ── Scanner Lifecycle ──────────────────────────────────────────────────
@@ -370,7 +440,8 @@ public sealed class BluetoothService : IDisposable
             IsConnected = isConnected,
             Rssi = rssi,
             Name = name,
-            CodMajor = cod
+            CodMajor = cod,
+            LastSeen = DateTime.UtcNow
         };
     }
 

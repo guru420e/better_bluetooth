@@ -35,6 +35,7 @@ public sealed class MainForm : Form
     private HeaderPanel _header = null!;
     private DarkScrollBar _darkScrollBar = null!;
     private Panel _contentPanel = null!;
+    private Panel _btOffPanel = null!;
     private FlowLayoutPanel _innerLayout = null!;
     private Label _nearbyLabel = null!;
     private FlowLayoutPanel _nearbyFlow = null!;
@@ -43,8 +44,12 @@ public sealed class MainForm : Form
     private Panel _chipPanel = null!;
     private bool _showingRules = false;
 
-    // ── Throttled UI refresh timer (smooth, 0 CPU thrash) ───────────────────
+    // ── Throttled UI refresh & Heartbeat timers ─────────────────────────────
     private readonly System.Windows.Forms.Timer _throttleTimer;
+    private readonly System.Windows.Forms.Timer _heartbeatTimer;
+    private bool _isAutoScan = true;
+    private int  _countdownSeconds = 10;
+    private int  _heartbeatTicks = 0;
     private bool _needsRefresh;
     private bool _forceClose;
 
@@ -87,6 +92,7 @@ public sealed class MainForm : Form
         _service.DeviceRemoved        += _ => ScheduleRefresh();
         _service.EnumerationCompleted += OnEnumerationCompleted;
         _service.StatusMessage        += OnStatusMessage;
+        _service.RadioStateChanged    += OnRadioStateChanged;
         _store.Changed                += () => { _chipPanel?.Invalidate(); ScheduleRefresh(); };
 
         // ── Auto-Forget Engine Events ───────────────────────────────────────────
@@ -147,6 +153,9 @@ public sealed class MainForm : Form
             }
         };
         _throttleTimer.Start();
+
+        _heartbeatTimer = new System.Windows.Forms.Timer { Interval = 250 };
+        _heartbeatTimer.Tick += OnHeartbeatTick;
     }
 
     private void ScheduleRefresh()
@@ -216,13 +225,27 @@ public sealed class MainForm : Form
         Show();
         Activate();
 
-        if (!_service.IsScanning)
+        bool isRadioOn = _service.IsRadioOn;
+        _header.SetBluetoothState(isRadioOn);
+        _btOffPanel.Visible = !isRadioOn;
+        if (!isRadioOn) _btOffPanel.BringToFront();
+        _darkScrollBar.Visible = isRadioOn;
+
+        if (isRadioOn && _isAutoScan)
         {
-            ToggleScan();
+            _countdownSeconds = 10;
+            _heartbeatTicks = 0;
+            _heartbeatTimer.Start();
+            _service.RestartScan();
         }
     }
 
-    public void HideWindow() => Hide();
+    public void HideWindow()
+    {
+        _heartbeatTimer.Stop();
+        _service.StopScan();
+        Hide();
+    }
 
     public void ForceClose()
     {
@@ -235,10 +258,11 @@ public sealed class MainForm : Form
         if (!_forceClose)
         {
             e.Cancel = true;
-            Hide();
+            HideWindow();
             return;
         }
         _throttleTimer.Stop();
+        _heartbeatTimer.Stop();
         base.OnFormClosing(e);
     }
 
@@ -251,8 +275,13 @@ public sealed class MainForm : Form
         SuspendLayout();
 
         _header = new HeaderPanel();
-        _header.ScanClicked     += ToggleScan;
-        _header.DragWindowMoved += delta => Location = new Point(Location.X + delta.X, Location.Y + delta.Y);
+        _header.BluetoothToggleClicked += async () =>
+        {
+            await _service.ToggleRadioAsync();
+        };
+        _header.AutoScanClicked   += () => SetScanMode(true);
+        _header.ManualScanClicked += ToggleManualScan;
+        _header.DragWindowMoved   += delta => Location = new Point(Location.X + delta.X, Location.Y + delta.Y);
         Controls.Add(_header);
 
         // ── Scrollable middle content viewport (expanded to 510px without footer) ─
@@ -263,6 +292,43 @@ public sealed class MainForm : Form
             BackColor  = AppTheme.Bg,
             AutoScroll = false,
         };
+
+        // ── Bluetooth OFF Overlay Panel ──────────────────────────────────────────
+        _btOffPanel = new Panel
+        {
+            Location  = Point.Empty,
+            Size      = new Size(432, 510),
+            BackColor = AppTheme.Bg,
+            Visible   = false,
+        };
+        var offIcon = new Label
+        {
+            Text      = "ᛒ",
+            Font      = new Font("Segoe UI", 36f, FontStyle.Bold),
+            ForeColor = AppTheme.Danger,
+            AutoSize  = true,
+            Location  = new Point(190, 130),
+        };
+        var offTitle = new Label
+        {
+            Text      = "Bluetooth is turned off",
+            Font      = new Font("Segoe UI", 13f, FontStyle.Bold),
+            ForeColor = AppTheme.TextPrim,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size      = new Size(432, 30),
+            Location  = new Point(0, 195),
+        };
+        var offSub = new Label
+        {
+            Text      = "Click [ ᛒ OFF ] in the header above\nto turn on your Bluetooth adapter and resume scanning.",
+            Font      = AppTheme.FontDevSub,
+            ForeColor = AppTheme.TextSec,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size      = new Size(432, 45),
+            Location  = new Point(0, 230),
+        };
+        _btOffPanel.Controls.AddRange(new Control[] { offIcon, offTitle, offSub });
+        _contentPanel.Controls.Add(_btOffPanel);
 
         _innerLayout = new FlowLayoutPanel
         {
@@ -328,17 +394,117 @@ public sealed class MainForm : Form
         ResumeLayout(false);
     }
 
-    private void ToggleScan()
+    private void OnHeartbeatTick(object? sender, EventArgs e)
     {
+        if (!_service.IsRadioOn || !Visible) return;
+
+        _heartbeatTicks++;
+        float pulsePhase = 0.5f + 0.5f * (float)Math.Sin(DateTime.Now.TimeOfDay.TotalSeconds * 4.0);
+
+        // Refresh live nearby cards so their pulse / freshness updates smoothly
+        if (_nearbyFlow.Controls.Count > 0)
+        {
+            foreach (Control card in _nearbyFlow.Controls)
+            {
+                card.Invalidate();
+            }
+        }
+
+        // 4 ticks = 1 second
+        if (_heartbeatTicks >= 4)
+        {
+            _heartbeatTicks = 0;
+            _countdownSeconds--;
+
+            if (_countdownSeconds <= 0)
+            {
+                _countdownSeconds = 10;
+                if (_isAutoScan)
+                {
+                    _service.RestartScan();
+                    _header.UpdateHeartbeat(10, 1.0f, isRecycling: true);
+                    return;
+                }
+            }
+        }
+
+        if (_isAutoScan)
+        {
+            _header.UpdateHeartbeat(_countdownSeconds, pulsePhase, isRecycling: false);
+        }
+    }
+
+    private void SetScanMode(bool isAuto)
+    {
+        _isAutoScan = isAuto;
+
+        if (_isAutoScan)
+        {
+            _countdownSeconds = 10;
+            _heartbeatTicks = 0;
+            _header.SetScanMode(isAutoScan: true, isScanning: true);
+            if (Visible && _service.IsRadioOn)
+            {
+                _heartbeatTimer.Start();
+                _service.RestartScan();
+            }
+        }
+        else
+        {
+            _heartbeatTimer.Stop();
+            _service.StopScan();
+            _header.SetScanMode(isAutoScan: false, isScanning: false);
+        }
+    }
+
+    private void ToggleManualScan()
+    {
+        if (_isAutoScan)
+        {
+            SetScanMode(false);
+            return;
+        }
+
         if (_service.IsScanning)
         {
             _service.StopScan();
-            _header.SetScanning(false);
+            _header.SetScanMode(isAutoScan: false, isScanning: false);
         }
         else
         {
             _service.StartScan();
-            _header.SetScanning(true);
+            _header.SetScanMode(isAutoScan: false, isScanning: true);
+        }
+    }
+
+    private void OnRadioStateChanged(bool isOn)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnRadioStateChanged(isOn));
+            return;
+        }
+
+        _header.SetBluetoothState(isOn);
+        _btOffPanel.Visible = !isOn;
+        if (!isOn) _btOffPanel.BringToFront();
+        _darkScrollBar.Visible = isOn;
+
+        if (!isOn)
+        {
+            _heartbeatTimer.Stop();
+            _service.StopScan();
+            _engine.CancelAllPendingCountdowns("Bluetooth adapter was turned off");
+        }
+        else
+        {
+            if (Visible && _isAutoScan)
+            {
+                _countdownSeconds = 10;
+                _heartbeatTicks = 0;
+                _heartbeatTimer.Start();
+                _service.RestartScan();
+            }
         }
     }
 
@@ -687,6 +853,7 @@ public sealed class MainForm : Form
         if (disposing)
         {
             _throttleTimer.Dispose();
+            _heartbeatTimer.Dispose();
         }
         base.Dispose(disposing);
     }

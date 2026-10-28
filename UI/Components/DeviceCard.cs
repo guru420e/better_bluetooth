@@ -29,8 +29,7 @@ public static class DeviceCard
         card.Paint += (s, e) =>
         {
             var cur = (BluetoothDeviceInfo)((Control)s!).Tag!;
-            string sub = $"{cur.MacFormatted}  ·  {(cur.Rssi.HasValue ? $"{cur.Rssi.Value} dBm" : "Pairing mode")}";
-            PaintNearbyText(e.Graphics, icon, cur.Name, sub);
+            PaintNearbyText(e.Graphics, icon, cur.Name, cur);
         };
 
         var btn = AppTheme.CreateButton("Connect", AppTheme.Teal, AppTheme.TealText, w: 86, h: 34);
@@ -316,21 +315,39 @@ public static class DeviceCard
         return card;
     }
 
-    private static void PaintNearbyText(Graphics g, string icon, string name, string sub)
+    private static void PaintNearbyText(Graphics g, string icon, string name, BluetoothDeviceInfo cur)
     {
         g.SmoothingMode     = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-        g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 18f));
+        bool isFresh = cur.IsFresh;
+        g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(isFresh ? AppTheme.TextPrim : AppTheme.SecLabel), new PointF(10f, 18f));
 
         // Connect button starts at 302, so width of 244 leaves 8px gap
         TextRenderer.DrawText(g, name, AppTheme.FontDevName,
-            new Rectangle(50, 12, 244, 22), AppTheme.TextPrim,
+            new Rectangle(50, 12, 244, 22), isFresh ? AppTheme.TextPrim : AppTheme.TextSec,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
-        TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
-            new Rectangle(50, 36, 244, 20), AppTheme.TextSec,
-            TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        if (isFresh)
+        {
+            // Fresh / Live Device: Draw glowing green dot and "Just now" badge
+            using var pulseBrush = new SolidBrush(Color.FromArgb(220, AppTheme.Connected));
+            g.FillEllipse(pulseBrush, 50, 42, 6, 6);
+
+            string rssiText = cur.Rssi.HasValue ? $"{cur.Rssi.Value} dBm" : "Pairing mode";
+            string sub = $"Just now  ·  {cur.MacFormatted}  ·  {rssiText}";
+            TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
+                new Rectangle(60, 36, 234, 20), AppTheme.Connected,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        }
+        else
+        {
+            // Inactive / Stale Device
+            string sub = $"○ Inactive  ·  {cur.MacFormatted}";
+            TextRenderer.DrawText(g, sub, AppTheme.FontDevSub,
+                new Rectangle(50, 36, 244, 20), AppTheme.SecLabel,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        }
     }
 
     private static void PaintMyDeviceText(Graphics g, string icon, string name, string sub, Color subColor, bool hasRules)
