@@ -28,11 +28,12 @@ When you turn off the controller or reboot your PC:
   - **Safety Blackouts**: Auto-forget will *never* fire if the device was not actively connected in the current session, if Bluetooth radio was toggled off, or during system sleep/wake transitions.
 - **Hands-Free Auto-Pair Engine (`⚡`)**:
   - Automatically pairs with discoverable devices as soon as they are detected in pairing mode.
-  - Easily enable Auto-Pair for any device in the centralized Rules Manager Dialog.
+  - Easily toggle Auto-Pair for any device in the in-place Rules component.
   - Completes the entire autonomous cycle: **Disconnect -> Auto-Forget -> Hold Sync -> Auto-Pair -> Connected**.
-- **Two-Tier Control (Centralized Rules Manager & Master Circuit Breakers)**:
-  - **Per-Device Rules**: Select exactly which devices should be automatically forgotten on disconnect and automatically paired on discovery via the sleek **Rules Manager Dialog** (click `⚙` or double-click any device card).
-  - **Master Circuit Breakers**: Master toggles for Auto-Forget and Auto-Pair to pause or resume engines globally with ACID disk persistence in embedded LiteDB.
+- **React-Style In-Place Rules Component**:
+  - Clicking the `⚙ Rules` chip or double-clicking any device card replaces the devices list with the Rules component directly in the flyout.
+  - No popup dialogs and zero white scrollbars—uses the existing custom 5px dark scrollbar.
+  - Each individual device manages its own **Auto-unpair on disconnect** and **Auto-pair on discovery** state directly.
 - **Embedded ACID Database (LiteDB)**:
   - Device automation rules and global settings are persisted safely in an embedded LiteDB database (`%APPDATA%\BetterBluetooth\better_bluetooth.db`), guaranteeing atomic, crash-proof transactions without corrupted JSON files.
 - **Live HCI Inquiry Rediscovery**:
@@ -60,17 +61,18 @@ The automation operates through an event-driven pipeline coordinated across thre
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. UI Layer (MainForm.cs / RulesManagerDialog.cs)               │
-│    • User configures per-device rules via Header ⚙ or chip      │
-│    • Double-click any device card to edit its automation rules  │
-│    • Master circuit breakers for Auto-Forget & Auto-Pair        │
+│ 1. UI Layer (MainForm.cs / React-like In-Place Rules Component) │
+│    • User clicks "⚙ Rules · X" chip or double-clicks card       │
+│    • In-place swap: replaces device list with Rules component   │
+│    • Zero popup dialogs, zero white scrollbars (5px Dark Scroll)│
+│    • Per-device Auto-Unpair & Auto-Pair toggles with ACID write │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Dispatches state changes
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 2. Storage Layer (DatabaseContext.cs & AutoForgetStore.cs)      │
 │    • Embedded LiteDB: %APPDATA%\BetterBluetooth\better_bluet... │
-│    • Thread-safe ACID collections: device_rules & settings      │
+│    • Thread-safe ACID collection: device_rules & settings       │
 │    • Automatic migration from legacy json stores                │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Fires Changed event
@@ -83,12 +85,12 @@ The automation operates through an event-driven pipeline coordinated across thre
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Two-Tier Control Hierarchy
-1. **Per-Device Rules Dialog (`⚙` Header Icon, Chip, or Double-Click Card)**:
-   - Configure **Auto-unpair on disconnect** and **Auto-pair on discovery** per device. Devices with active rules display a subtle `[⚡ Auto]` teal badge.
-2. **Master Circuit Breakers**:
-   - Master switches in the Rules Manager allow instantly pausing all auto-unpairing or auto-pairing across all devices while preserving individual device configurations.
-   - All rules and settings are persisted transactionally in embedded LiteDB.
+### Individual Per-Device Automation
+- **Per-Device Rules Component (In-Place Swap)**:
+  - Configure **Auto-unpair on disconnect** and **Auto-pair on discovery** directly per device.
+  - No global circuit breakers needed—each individual device owns and manages its state.
+  - Devices with active rules display a subtle `[⚡ Auto]` teal badge in the main list.
+  - All rules are persisted transactionally in embedded LiteDB.
 
 ---
 
@@ -100,7 +102,7 @@ The application is modularized into decoupled layers:
 better_bluetooth/
 ├── Core/                              # Core domain and hardware integration
 │   ├── Database/
-│   │   ├── AppSettingsRecord.cs       # Master toggles & autostart document
+│   │   ├── AppSettingsRecord.cs       # App settings document
 │   │   ├── DatabaseContext.cs         # Thread-safe LiteDB context & migrations
 │   │   └── DeviceRuleRecord.cs        # Per-device automation rules document
 │   ├── Interop/
@@ -117,11 +119,10 @@ better_bluetooth/
 │   │   └── AppTheme.cs                # Design tokens (#14161A, #3DD6B0), fonts, button factories
 │   ├── Components/
 │   │   ├── DarkScrollBar.cs           # Custom 5px dark scrollbar control with mouse dragging
-│   │   ├── HeaderPanel.cs             # Drag header, live status, scan toggle, and ⚙ settings button
-│   │   └── DeviceCard.cs              # Double-buffered card with badge, connect/disconnect, and trash
+│   │   ├── HeaderPanel.cs             # Drag header, live status, and scan toggle button
+│   │   └── DeviceCard.cs              # Nearby cards, My Devices cards, and inline Rule cards
 │   ├── Forms/
-│   │   ├── MainForm.cs                # Borderless main flyout managing full 510px viewport & events
-│   │   └── RulesManagerDialog.cs      # Centered modal for managing per-device and master rules
+│   │   └── MainForm.cs                # Borderless main flyout with in-place React-style view swapping
 │   └── Tray/
 │       └── AppContext.cs              # ApplicationContext, tray icon drawing & balloon notifications
 ├── CLI/                               # Interactive command-line test runners
@@ -160,8 +161,9 @@ dotnet run
 ```
 
 - Click the tray icon or press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to open the flyout.
-- Click the **`⚙`** button in the header or the **`⚙ Rules`** chip to open the **Rules Manager Dialog**.
+- Click the **`⚙ Rules`** chip or double-click any device card to view the in-place **DEVICE RULES** component.
 - Configure **Auto-unpair on disconnect** or **Auto-pair on discovery** per device with instant LiteDB persistence.
+- Click **`← Devices`** or press <kbd>Esc</kbd> to return to the standard device list.
 - Devices with active automation display an **`[⚡ Auto]`** teal badge; double-clicking any device card opens its rules directly.
 - Right-click the system tray icon and check **"Start with Windows"** to auto-launch silently on login.
 - To exit, right-click the tray icon and choose **Exit**.

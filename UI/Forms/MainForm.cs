@@ -36,9 +36,12 @@ public sealed class MainForm : Form
     private DarkScrollBar _darkScrollBar = null!;
     private Panel _contentPanel = null!;
     private FlowLayoutPanel _innerLayout = null!;
+    private Label _nearbyLabel = null!;
     private FlowLayoutPanel _nearbyFlow = null!;
+    private Label _myDevicesSectionLabel = null!;
     private FlowLayoutPanel _myDevicesFlow = null!;
     private Panel _chipPanel = null!;
+    private bool _showingRules = false;
 
     // ── Throttled UI refresh timer (smooth, 0 CPU thrash) ───────────────────
     private readonly System.Windows.Forms.Timer _throttleTimer;
@@ -62,7 +65,22 @@ public sealed class MainForm : Form
         BuildUI();
 
         KeyPreview = true;
-        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) HideWindow(); };
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                if (_showingRules)
+                {
+                    _showingRules = false;
+                    _myDevicesFlow.Controls.Clear();
+                    UpdateViewMode();
+                }
+                else
+                {
+                    HideWindow();
+                }
+            }
+        };
 
         _service.DeviceDiscovered     += _ => ScheduleRefresh();
         _service.DeviceUpdated        += _ => ScheduleRefresh();
@@ -234,7 +252,6 @@ public sealed class MainForm : Form
 
         _header = new HeaderPanel();
         _header.ScanClicked     += ToggleScan;
-        _header.SettingsClicked += ShowAutoForgetListDialog;
         _header.DragWindowMoved += delta => Location = new Point(Location.X + delta.X, Location.Y + delta.Y);
         Controls.Add(_header);
 
@@ -261,7 +278,8 @@ public sealed class MainForm : Form
         };
 
         // 1. NEARBY SECTION
-        _innerLayout.Controls.Add(MakeSectionLabel("NEARBY  ·  READY TO PAIR"));
+        _nearbyLabel = MakeSectionLabel("NEARBY  ·  READY TO PAIR");
+        _innerLayout.Controls.Add(_nearbyLabel);
         _nearbyFlow = new FlowLayoutPanel
         {
             Width         = 398,
@@ -343,7 +361,7 @@ public sealed class MainForm : Form
             Margin    = new Padding(0, 4, 0, 4),
         };
 
-        var lbl = new Label
+        _myDevicesSectionLabel = new Label
         {
             Text      = "MY DEVICES",
             Font      = AppTheme.FontSection,
@@ -368,19 +386,36 @@ public sealed class MainForm : Form
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             using var path = AppTheme.RoundedPath(new Rectangle(0, 0, _chipPanel.Width - 1, _chipPanel.Height - 1), 12);
-            using var pen  = new Pen(AppTheme.Border, 1f);
+            using var bgBrush = new SolidBrush(_showingRules ? Color.FromArgb(40, AppTheme.Teal) : AppTheme.ChipBg);
+            g.FillPath(bgBrush, path);
+
+            using var pen  = new Pen(_showingRules ? AppTheme.Teal : AppTheme.Border, 1f);
             g.DrawPath(pen, path);
 
-            string text = $"⚙  Rules · {_store.Count}";
+            string text = _showingRules ? "←  Devices" : $"⚙  Rules · {_store.ActiveRulesCount}";
             TextRenderer.DrawText(g, text, AppTheme.FontChip, _chipPanel.ClientRectangle, AppTheme.Teal,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         };
 
-        _chipPanel.Click += (_, _) => ShowAutoForgetListDialog();
+        _chipPanel.Click += (_, _) =>
+        {
+            _showingRules = !_showingRules;
+            _myDevicesFlow.Controls.Clear();
+            UpdateViewMode();
+        };
 
-        row.Controls.Add(lbl);
+        row.Controls.Add(_myDevicesSectionLabel);
         row.Controls.Add(_chipPanel);
         return row;
+    }
+
+    private void UpdateViewMode()
+    {
+        _nearbyLabel.Visible        = !_showingRules;
+        _nearbyFlow.Visible         = !_showingRules;
+        _myDevicesSectionLabel.Text = _showingRules ? "DEVICE RULES" : "MY DEVICES";
+        _chipPanel.Invalidate();
+        RenderDeviceLists();
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -395,12 +430,19 @@ public sealed class MainForm : Form
             return;
         }
 
-        var all = _service.Devices;
-        var nearby = all.Where(d => !d.IsPaired).OrderByDescending(d => d.Rssi ?? -999).ToList();
-        var paired = all.Where(d => d.IsPaired).OrderByDescending(d => d.IsConnected).ThenBy(d => d.Name).ToList();
+        if (_showingRules)
+        {
+            RenderRulesView();
+        }
+        else
+        {
+            var all = _service.Devices;
+            var nearby = all.Where(d => !d.IsPaired).OrderByDescending(d => d.Rssi ?? -999).ToList();
+            var paired = all.Where(d => d.IsPaired).OrderByDescending(d => d.IsConnected).ThenBy(d => d.Name).ToList();
 
-        ReconcileNearby(nearby);
-        ReconcileMyDevices(paired);
+            ReconcileNearby(nearby);
+            ReconcileMyDevices(paired);
+        }
 
         _darkScrollBar.UpdateMetrics(_contentPanel.Height, _innerLayout.Height);
     }
@@ -515,7 +557,7 @@ public sealed class MainForm : Form
                     _service.UnpairDeviceAsync,
                     _service.PairDeviceAsync,
                     mac => _countdownRemaining.TryGetValue(mac, out int s) ? s : null,
-                    ShowAutoForgetListDialog));
+                    ShowRulesView));
             }
             _myDevicesFlow.ResumeLayout(true);
         }
@@ -529,10 +571,91 @@ public sealed class MainForm : Form
         }
     }
 
-    private void ShowAutoForgetListDialog()
+    private void ShowRulesView()
     {
-        using var dlg = new RulesManagerDialog(_store, _service);
-        dlg.ShowDialog(this);
+        if (!_showingRules)
+        {
+            _showingRules = true;
+            _myDevicesFlow.Controls.Clear();
+            UpdateViewMode();
+        }
+    }
+
+    private void RenderRulesView()
+    {
+        var paired = _service.Devices.Where(d => d.IsPaired).ToList();
+        var rules  = _store.GetAllRules();
+
+        var deviceMap = paired.ToDictionary(
+            d => AutoForgetStore.NormalizeMac(d.MacFormatted),
+            d => d,
+            StringComparer.OrdinalIgnoreCase);
+
+        var ruleMap = rules.ToDictionary(
+            r => AutoForgetStore.NormalizeMac(r.Mac),
+            r => r,
+            StringComparer.OrdinalIgnoreCase);
+
+        var allMacs = deviceMap.Keys.Union(ruleMap.Keys, StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (allMacs.Count == 0)
+        {
+            if (_myDevicesFlow.Controls.Count != 1 || !(_myDevicesFlow.Controls[0] is Label))
+            {
+                _myDevicesFlow.SuspendLayout();
+                _myDevicesFlow.Controls.Clear();
+                _myDevicesFlow.Controls.Add(new Label
+                {
+                    Text      = "No paired or configured devices found.\nPair a device first to configure automation rules.",
+                    Font      = AppTheme.FontDevSub,
+                    ForeColor = AppTheme.SecLabel,
+                    AutoSize  = true,
+                    Margin    = new Padding(4, 8, 0, 4),
+                });
+                _myDevicesFlow.ResumeLayout(true);
+            }
+            return;
+        }
+
+        var currentCards = _myDevicesFlow.Controls.OfType<Control>()
+            .Where(c => c.Tag is string)
+            .ToList();
+
+        bool needsRebuild = currentCards.Count != allMacs.Count;
+        if (!needsRebuild)
+        {
+            for (int i = 0; i < allMacs.Count; i++)
+            {
+                if (currentCards[i].Tag as string != allMacs[i])
+                {
+                    needsRebuild = true;
+                    break;
+                }
+            }
+        }
+
+        if (needsRebuild)
+        {
+            _myDevicesFlow.SuspendLayout();
+            _myDevicesFlow.Controls.Clear();
+            foreach (var mac in allMacs)
+            {
+                deviceMap.TryGetValue(mac, out var dev);
+                ruleMap.TryGetValue(mac, out var rule);
+
+                string name = dev?.Name ?? (rule?.Name ?? mac);
+                var ruleCard = DeviceCard.CreateRuleCard(
+                    mac,
+                    name,
+                    dev,
+                    _store,
+                    () => { _chipPanel.Invalidate(); },
+                    msg => _header.SetStatusText(msg));
+                ruleCard.Tag = mac;
+                _myDevicesFlow.Controls.Add(ruleCard);
+            }
+            _myDevicesFlow.ResumeLayout(true);
+        }
     }
 
     // ── Service Event Handlers ─────────────────────────────────────────────

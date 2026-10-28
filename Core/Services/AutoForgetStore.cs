@@ -30,6 +30,19 @@ public sealed class AutoForgetStore : IDisposable
         get { lock (_lock) return _pairMacs.Count; }
     }
 
+    public int ActiveRulesCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                var all = new HashSet<string>(_forgetMacs, StringComparer.OrdinalIgnoreCase);
+                all.UnionWith(_pairMacs);
+                return all.Count;
+            }
+        }
+    }
+
     public IReadOnlyCollection<string> MacAddresses
     {
         get { lock (_lock) return new List<string>(_forgetMacs); }

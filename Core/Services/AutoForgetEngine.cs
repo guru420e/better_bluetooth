@@ -84,9 +84,15 @@ public sealed class AutoForgetEngine : IDisposable
 
         _store.Changed += () =>
         {
-            if (!_store.AutoFixEnabled)
+            foreach (var mac in _pendingForgets.Keys.ToList())
             {
-                CancelAllPendingCountdowns("Auto-fix disabled by user");
+                if (!_store.Contains(mac))
+                {
+                    if (_pendingForgets.TryRemove(mac, out _))
+                    {
+                        GraceCountdownCancelled?.Invoke(mac);
+                    }
+                }
             }
         };
 
@@ -141,7 +147,6 @@ public sealed class AutoForgetEngine : IDisposable
     {
         if (_isPaused) return false;
         if (!_isRadioOn) return false;
-        if (!_store.MasterAutoForget) return false;
 
         if (DateTime.UtcNow < _engineStartedTime.AddSeconds(StartupBlackoutSeconds))
             return false;
@@ -161,7 +166,7 @@ public sealed class AutoForgetEngine : IDisposable
 
     public async Task CheckAndCleanupStalePairingsAsync()
     {
-        if (!_store.MasterAutoForget || _isPaused || !_isRadioOn)
+        if (_isPaused || !_isRadioOn)
             return;
 
         var devices = _service.Devices;
@@ -202,7 +207,7 @@ public sealed class AutoForgetEngine : IDisposable
         // A. NEARBY / UNPAIRED DEVICE -> Check for Auto-Pair
         if (!dev.IsPaired)
         {
-            if (_store.MasterAutoPair && _store.IsAutoPair(normMac))
+            if (_store.IsAutoPair(normMac))
             {
                 _ = TryAutoPairDeviceAsync(dev);
             }

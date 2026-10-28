@@ -169,6 +169,120 @@ public static class DeviceCard
         return card;
     }
 
+    public static Panel CreateRuleCard(
+        string mac,
+        string name,
+        BluetoothDeviceInfo? dev,
+        AutoForgetStore store,
+        Action onStoreChanged,
+        Action<string> onStatusNotification)
+    {
+        var card = new Panel
+        {
+            Size      = new Size(398, 76),
+            BackColor = AppTheme.CardBg,
+            Margin    = new Padding(0, 0, 0, 8),
+        };
+        AppTheme.EnableDoubleBuffer(card);
+        card.Region = new Region(AppTheme.RoundedPath(new Rectangle(0, 0, card.Width, card.Height), 10));
+
+        string icon = dev != null ? AppTheme.GetDeviceEmoji(dev) : "🎮";
+
+        card.Paint += (_, e) =>
+        {
+            var g = e.Graphics;
+            g.SmoothingMode     = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            using var path = AppTheme.RoundedPath(new Rectangle(1, 1, card.Width - 2, card.Height - 2), 9);
+            using var pen  = new Pen(AppTheme.Border, 1f);
+            g.DrawPath(pen, path);
+
+            // Icon
+            g.DrawString(icon, AppTheme.FontIcon, new SolidBrush(AppTheme.TextSec), new PointF(10f, 16f));
+
+            // Device Name
+            TextRenderer.DrawText(g, name, AppTheme.FontDevName,
+                new Rectangle(50, 10, 300, 20), AppTheme.TextPrim,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+
+            // MAC Address
+            TextRenderer.DrawText(g, mac, new Font("Segoe UI", 7.5f),
+                new Rectangle(50, 30, 290, 16), AppTheme.SecLabel,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        };
+
+        // Trash / Reset button
+        var trash = AppTheme.CreateIconButton("🗑", AppTheme.Danger, w: 32, h: 28);
+        trash.Location = new Point(356, 10);
+
+        bool autoForget = store.Contains(mac);
+        bool autoPair   = store.IsAutoPair(mac);
+
+        var chkForget = new CheckBox
+        {
+            Text      = "Auto-unpair on disconnect",
+            Font      = new Font("Segoe UI", 8.5f),
+            ForeColor = AppTheme.TextPrim,
+            BackColor = AppTheme.CardBg,
+            AutoSize  = true,
+            Location  = new Point(50, 48),
+            Checked   = autoForget,
+            Cursor    = Cursors.Hand,
+            FlatStyle = FlatStyle.Flat,
+        };
+        chkForget.FlatAppearance.BorderSize  = 1;
+        chkForget.FlatAppearance.BorderColor = AppTheme.Border;
+
+        var chkPair = new CheckBox
+        {
+            Text      = "Auto-pair on discovery",
+            Font      = new Font("Segoe UI", 8.5f),
+            ForeColor = AppTheme.TextPrim,
+            BackColor = AppTheme.CardBg,
+            AutoSize  = true,
+            Location  = new Point(224, 48),
+            Checked   = autoPair,
+            Cursor    = Cursors.Hand,
+            FlatStyle = FlatStyle.Flat,
+        };
+        chkPair.FlatAppearance.BorderSize  = 1;
+        chkPair.FlatAppearance.BorderColor = AppTheme.Border;
+
+        bool updating = false;
+
+        chkForget.CheckedChanged += (_, _) =>
+        {
+            if (updating) return;
+            store.SetRule(mac, name, chkForget.Checked, chkPair.Checked);
+            onStoreChanged();
+            onStatusNotification($"Updated rules for {name}");
+        };
+
+        chkPair.CheckedChanged += (_, _) =>
+        {
+            if (updating) return;
+            store.SetRule(mac, name, chkForget.Checked, chkPair.Checked);
+            onStoreChanged();
+            onStatusNotification($"Updated rules for {name}");
+        };
+
+        trash.Click += (_, _) =>
+        {
+            updating = true;
+            chkForget.Checked = false;
+            chkPair.Checked   = false;
+            updating = false;
+
+            store.Remove(mac);
+            onStoreChanged();
+            onStatusNotification($"Cleared all rules for {name}");
+        };
+
+        card.Controls.AddRange(new Control[] { trash, chkForget, chkPair });
+        return card;
+    }
+
     private static Panel CreateBaseCardPanel()
     {
         var card = new Panel
